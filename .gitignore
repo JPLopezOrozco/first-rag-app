@@ -1,0 +1,17 @@
+# entorno
+venv/
+.venv/
+.env
+
+# datos locales
+chromadb/
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# sistema / editor
+.DS_Store
+.idea/
+.vscode/
