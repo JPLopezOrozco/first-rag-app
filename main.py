@@ -1,5 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from service.ingest import process_document
+from service.query import answer_question, answer_hybrid
+from schema import QueryRequest, QueryResponse
 from starlette.concurrency import run_in_threadpool
 from exceptions.exceptions import UnsupportedFileType, EmptyDocumentError
 
@@ -22,3 +24,7 @@ async def ingest_documents(file: UploadFile = File(...)):
         raise HTTPException(415, str(e))
     return {f"filename:{file.filename}, chunks: {n}"}
 
+
+@app.post("/question", response_model=QueryResponse, response_model_exclude_none=True)
+async def query_request(query:QueryRequest)->QueryResponse:    
+    return await run_in_threadpool(answer_hybrid, query)

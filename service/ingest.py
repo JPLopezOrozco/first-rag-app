@@ -30,7 +30,6 @@ def read_document(data:bytes, content_type:str)->str:
     elif ext ==".docx":
         content = "\n".join(p.text for p in Document(io.BytesIO(data)).paragraphs)
     
-    
     return content
 
 
