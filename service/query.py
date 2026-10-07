@@ -102,7 +102,7 @@ def answer_hybrid(query:QueryRequest)->QueryResponse:
     
     source = [
         Source(source=m["source"], chunk=m["chunk"], text=t)
-            for t, m in hits
+            for i, (t,m)in enumerate(hits, 1) if i in cited
     ]
     
     return QueryResponse(answer=augmented_response, sources=source)

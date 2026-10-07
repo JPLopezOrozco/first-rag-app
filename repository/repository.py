@@ -23,8 +23,10 @@ collection = client.get_or_create_collection(
 
 
 def add_chunks(filename: str, chunks: list[str], metadata: list[dict], ids: list[str]) -> None:
+    global _bm25
     collection.delete(where={"source": filename})
     collection.upsert(documents=chunks, metadatas=metadata, ids=ids)
+    _bm25 = None
 
 
 
@@ -72,6 +74,8 @@ def rrf(rankings, weights, k=60):
 
 
 def hybrid_search(query:str, n_results: int = 4, alpha: float = 0.5, pool: int =20)->dict:
+    if collection.count() == 0:
+        return {"ids": [[]], "documents": [[]], "metadatas": [[]]}
     fused = rrf(
         [vector_ids(query, pool), bm25_ids(query, pool)],
         [alpha, 1 - alpha],

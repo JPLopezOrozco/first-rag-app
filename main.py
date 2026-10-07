@@ -16,13 +16,11 @@ async def ingest_documents(file: UploadFile = File(...)):
     
     try:
         n = await run_in_threadpool(process_document, data, file.filename, file.content_type)
-    except ValueError as e:
-        raise HTTPException(415, str(e))
     except EmptyDocumentError as e:
         raise HTTPException(422, str(e))
     except UnsupportedFileType as e:
         raise HTTPException(415, str(e))
-    return {f"filename:{file.filename}, chunks: {n}"}
+    return {"filename": file.filename, "chunks": n}
 
 
 @app.post("/question", response_model=QueryResponse, response_model_exclude_none=True)
