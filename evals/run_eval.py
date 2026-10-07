@@ -43,7 +43,7 @@ def run_eval(search_fn, label, data, k=4, verbose=False):
 
 
 if __name__ == "__main__":
-    runs = [run_eval(search, "semantic 500/100", data)]
+    runs = [run_eval(search, "semantic 250/50", data)]
     for a in (0, 0.25, 0.5, 0.75, 1):
         runs.append(run_eval(lambda q, k, a=a: hybrid_search(q, k, alpha=a), f"hybrid a={a}", data))
 
