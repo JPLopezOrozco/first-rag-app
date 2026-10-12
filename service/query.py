@@ -17,7 +17,7 @@ SYSTEM_PROMPT = (
     "'No encuentro esa información en los documentos.' "
     "No uses conocimiento externo."
 )
-MAX_DISTANCE = 0.7
+
 NOT_FOUND = "No encuentro esa información en los documentos."
 ROUTER_PROMPT = (
     "Clasificá el mensaje del usuario. Respondé SOLO una palabra.\n"
@@ -39,36 +39,6 @@ def need_retrieval(query:str)->bool:
     )
     
     return not r.content[0].text.strip().upper().startswith("SMALLTALK")
-
-def answer_question(query:QueryRequest)->QueryResponse:
-    if not need_retrieval(query.question):
-        return QueryResponse(answer=SMALLTALK_REPLY, sources=[])
-        
-    retrieval = search(query.question, query.n_results)
-    
-    hits = [
-        (t,m,d)
-        for t, m, d in zip(
-            retrieval["documents"][0],
-            retrieval["metadatas"][0],
-            retrieval["distances"][0],
-        )
-        if d <= MAX_DISTANCE
-    ]
-    
-    if not hits:
-        return QueryResponse(answer=NOT_FOUND, sources=[])
-    
-    context = "\n\n".join(f"[{i}] {t}" for i, (t, _, _) in enumerate(hits, 1))
-            
-    augmented_response = (llm_call(query.question, context)).content[0].text
-    
-    source = [
-        Source(source=m["source"], chunk=m["chunk"], distance=d, text=t)
-            for t, m, d in hits
-    ]
-    
-    return QueryResponse(answer=augmented_response, sources=source)
 
 def answer_hybrid(query:QueryRequest)->QueryResponse:
     

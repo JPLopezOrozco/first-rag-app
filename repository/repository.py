@@ -27,17 +27,13 @@ def add_chunks(filename: str, chunks: list[str], metadata: list[dict], ids: list
     collection.delete(where={"source": filename})
     collection.upsert(documents=chunks, metadatas=metadata, ids=ids)
     _bm25 = None
-
-
-
+    
 def search(query: str, n_results: int = 4) -> dict:
     return collection.query(
         query_texts=[query],
         n_results=n_results,
         include=["documents", "metadatas", "distances"],
     )
-    
-    
     
 def tokenize(s: str) -> list[str]:
     s = unicodedata.normalize("NFD", s.lower())
@@ -53,7 +49,6 @@ def _build_bm25():
     _ids = todos["ids"]
     _bm25 = BM25Okapi([tokenize(d) for d in todos["documents"]])
     
-
 def vector_ids(query, n):
     r = collection.query(query_texts=[query], n_results=n)
     return r["ids"][0]
