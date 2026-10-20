@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import re, unicodedata
 from rank_bm25 import BM25Okapi
 import os
-
+import voyageai
 
 
 load_dotenv()
@@ -13,6 +13,7 @@ embedding_fn = embedding_functions.VoyageAIEmbeddingFunction(
     model_name="voyage-4-lite",
 )
 
+vo = voyageai.Client(api_key=os.environ["VOYAGE_API_KEY"])
 client = chromadb.PersistentClient(path="chromadb")
 
 collection = client.get_or_create_collection(
@@ -84,6 +85,18 @@ def hybrid_search(query:str, n_results: int = 4, alpha: float = 0.5, pool: int =
         "metadatas": [[by_id[i][1] for i in fused]]
     }
 
+def rerank_search(query:str, k:int=4, pool:int = 20)->dict:
+    candidates = hybrid_search(query,pool=pool, alpha=0.75)
+    docs, metas = candidates["documents"][0], candidates["metadatas"][0]    
+    if(len(docs)==0):
+        return {"documents":[[]], "metadatas":[[]], "scores":[[]]}
     
+    rr = vo.rerank(query, docs, model="rerank-2.5", top_k=k)
     
+    return {
+        "documents":[[x.document for x in rr.results]],
+        "metadatas":[[metas[x.index] for x in rr.results]],
+        "scores": [[x.relevance_score for x in rr.results]]
+    }    
+        
     

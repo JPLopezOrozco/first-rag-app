@@ -1,5 +1,5 @@
 import re
-from repository.repository import search, hybrid_search
+from repository.repository import hybrid_search, rerank_search
 from schema import QueryResponse, QueryRequest, Source
 from anthropic import Anthropic
 from dotenv import load_dotenv
@@ -40,20 +40,23 @@ def need_retrieval(query:str)->bool:
     
     return not r.content[0].text.strip().upper().startswith("SMALLTALK")
 
-def answer_hybrid(query:QueryRequest)->QueryResponse:
+def default_retrieve(query:str, n: int):
+    try:
+        return rerank_search(query, n)
+    except Exception:
+        print("RERANK FALLO, CAMBIO A HYBRID")
+        return hybrid_search(query, n, ALPHA)
+        
+        
+
+def answer(query:QueryRequest, retrieve=default_retrieve)->QueryResponse:
     
     if not need_retrieval(query.question):
         return QueryResponse(answer=SMALLTALK_REPLY, sources=[])
         
-    retrieval = hybrid_search(query.question, query.n_results, ALPHA)
+    retrieval = retrieve(query.question, query.n_results)
     
-    hits = [
-        (t,m)
-        for t, m in zip(
-            retrieval["documents"][0],
-            retrieval["metadatas"][0],
-        )
-    ]
+    hits = list(zip(retrieval["documents"][0], retrieval["metadatas"][0]))
     
     if not hits:
         return QueryResponse(answer=NOT_FOUND, sources=[])
