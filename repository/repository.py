@@ -85,11 +85,19 @@ def hybrid_search(query:str, n_results: int = 4, alpha: float = 0.5, pool: int =
         "metadatas": [[by_id[i][1] for i in fused]]
     }
 
-def rerank_search(query:str, k:int=4, pool:int = 20)->dict:
-    candidates = hybrid_search(query,pool=pool, alpha=0.75)
-    docs, metas = candidates["documents"][0], candidates["metadatas"][0]    
-    if(len(docs)==0):
-        return {"documents":[[]], "metadatas":[[]], "scores":[[]]}
+
+def candidate_ids(query: str, n_each: int = 10) -> list[str]:
+    return list(dict.fromkeys(vector_ids(query, n_each) + bm25_ids(query, n_each)))
+
+
+def rerank_search(query:str, k:int=4, n_each:int = 20)->dict:
+    ids = candidate_ids(query, n_each)
+    got = collection.get(ids=ids, include=["documents", "metadatas"])
+    by_id = {i: (d, m) for i, d, m in zip(got["ids"], got["documents"], got["metadatas"])}
+
+    ids = [i for i in ids if i in by_id]
+    docs = [by_id[i][0] for i in ids]
+    metas = [by_id[i][1] for i in ids]
     
     rr = vo.rerank(query, docs, model="rerank-2.5", top_k=k)
     
