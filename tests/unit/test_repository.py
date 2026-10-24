@@ -1,6 +1,9 @@
+import psycopg
 import pytest
+from voyageai.error import APIConnectionError
 
 import app.repository.repository as repo
+from app.exceptions.exceptions import InconsistentChunkData, RerankError
 from app.repository.repository import to_vector_literal
 
 
@@ -217,7 +220,7 @@ class WorkingPool:
 
 class BrokenPool:
     def connection(self, timeout=None):
-        raise RuntimeError("sin conexión")
+        raise psycopg.OperationalError("sin conexión")
 
 
 def test_ping_true_when_database_answers(monkeypatch):
@@ -230,3 +233,38 @@ def test_ping_false_when_database_fails(monkeypatch):
     monkeypatch.setattr(repo, "get_pool", lambda: BrokenPool())
 
     assert repo.ping() is False
+
+
+def test_ping_does_not_hide_unexpected_errors(monkeypatch):
+    class Explodes:
+        def connection(self, timeout=None):
+            raise RuntimeError("bug")
+
+    monkeypatch.setattr(repo, "get_pool", lambda: Explodes())
+
+    with pytest.raises(RuntimeError):
+        repo.ping()
+
+
+def test_add_chunks_rejects_inconsistent_lengths_before_embedding(monkeypatch):
+    def explode(texts):
+        raise AssertionError("no debería llamar a Voyage")
+
+    monkeypatch.setattr(repo, "embed_texts", explode)
+
+    with pytest.raises(InconsistentChunkData):
+        repo.add_chunks("a.txt", ["uno", "dos"], [{}, {}], ["id"], "text/plain")
+
+
+class FailingRerank:
+    def rerank(self, query, docs, model=None, top_k=None):
+        raise APIConnectionError("sin red")
+
+
+def test_rerank_search_wraps_voyage_errors_in_rerank_error(branches, monkeypatch):
+    monkeypatch.setattr(repo, "vo", FailingRerank())
+
+    with pytest.raises(RerankError) as info:
+        repo.rerank_search("pregunta")
+
+    assert isinstance(info.value.__cause__, APIConnectionError)

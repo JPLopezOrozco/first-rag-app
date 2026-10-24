@@ -2,6 +2,7 @@ import psycopg
 import pytest
 
 import app.repository.repository as repo
+from app.exceptions.exceptions import InconsistentChunkData
 
 FILENAME = "test_repo_add_chunks.txt"
 DIM = 1024
@@ -69,7 +70,7 @@ def test_add_chunks_length_mismatch_fails_before_embedding(db, monkeypatch):
 
     monkeypatch.setattr(repo, "embed_texts", explode)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(InconsistentChunkData):
         repo.add_chunks(FILENAME, ["uno", "dos"], meta(2), ids(1), "text/plain")
 
 

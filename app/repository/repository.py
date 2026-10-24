@@ -3,10 +3,14 @@ import logging
 import os
 import threading
 
+import psycopg
 import voyageai
 from dotenv import load_dotenv
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
+from voyageai.error import VoyageError
+
+from app.exceptions.exceptions import InconsistentChunkData, RerankError
 
 load_dotenv()
 
@@ -53,7 +57,7 @@ def ping() -> bool:
         with get_pool().connection(timeout=3) as conn:
             conn.execute("SELECT 1")
         return True
-    except Exception:
+    except psycopg.Error:
         logger.warning("La base de datos no responde", exc_info=True)
         return False
 
@@ -71,7 +75,7 @@ def to_vector_literal(vector: list[float]) -> str:
 
 def add_chunks(filename: str, chunks: list[str], metadata: list[dict], ids: list[str], content_type: str) -> None:
     if not (len(chunks) == len(metadata) == len(ids)):
-        raise ValueError("chunks, metadata e ids deben tener el mismo largo")
+        raise InconsistentChunkData("chunks, metadata e ids deben tener el mismo largo")
 
     embeddings = embed_texts(chunks)
 
@@ -144,7 +148,10 @@ def rerank_search(query: str, k: int = 4, n_each: int = 20) -> dict:
     if not rows:
         return {"documents": [[]], "metadatas": [[]], "scores": [[]]}
 
-    rr = vo.rerank(query, [r[1] for r in rows], model="rerank-2.5", top_k=k)
+    try:
+        rr = vo.rerank(query, [r[1] for r in rows], model="rerank-2.5", top_k=k)
+    except VoyageError as e:
+        raise RerankError("Falló la llamada al reranker") from e
     return {
         "documents": [[x.document for x in rr.results]],
         "metadatas": [[rows[x.index][2] for x in rr.results]],

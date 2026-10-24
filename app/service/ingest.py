@@ -4,7 +4,7 @@ from pypdf import PdfReader
 from docx import Document
 from app.repository.repository import add_chunks
 import tiktoken
-from app.exceptions.exceptions import EmptyDocumentError, UnsupportedFileType
+from app.exceptions.exceptions import EmptyDocumentError, InvalidChunkingParameters, UnsupportedFileType
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ def read_document(data:bytes, content_type:str)->str:
 def chunking_overlap(text: str, chunk_size: int=500, overlap: int=100)->list[str]:
     
     if overlap >= chunk_size:
-        raise ValueError("Overlap debe ser menor a chunk size")
+        raise InvalidChunkingParameters("Overlap debe ser menor a chunk size")
     
     tokens = _enc.encode(text)
     step = chunk_size - overlap
