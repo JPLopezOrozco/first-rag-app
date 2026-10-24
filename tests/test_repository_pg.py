@@ -170,3 +170,33 @@ def test_lexical_rows_returns_content_metadata_and_rank(invented):
     assert content == "las zanfordias del norte"
     assert metadata == {"source": FILENAME, "chunk": 0}
     assert rank > 0
+
+
+def test_ping_true_with_database(db):
+    assert repo.ping() is True
+
+
+def test_pool_serves_more_threads_than_connections(db, monkeypatch):
+    import threading
+
+    monkeypatch.setenv("DB_POOL_MAX", "2")
+    monkeypatch.setattr(repo, "_pool", None)  # pool propio de 2 conexiones para esta prueba
+    results, errors = [], []
+
+    def work():
+        try:
+            results.append(repo.vector_rows(unit(0), 1))
+        except Exception as e:  # pragma: no cover
+            errors.append(e)
+
+    try:
+        threads = [threading.Thread(target=work) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        repo.close_pool()
+
+    assert errors == []
+    assert len(results) == 8

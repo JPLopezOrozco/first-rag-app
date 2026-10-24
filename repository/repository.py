@@ -1,16 +1,64 @@
+import atexit
+import logging
+import os
+import threading
+
+import voyageai
 from dotenv import load_dotenv
 from psycopg.types.json import Jsonb
-import os
-import voyageai
-import psycopg
+from psycopg_pool import ConnectionPool
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 DSN = os.getenv("DATABASE_URL", "postgresql://rag:rag@localhost:5433/rag")
 EMBED_MODEL = "voyage-4-lite"
 EMBED_BATCH = 128
 
 vo = voyageai.Client(api_key=os.environ["VOYAGE_API_KEY"])
+
+_pool: ConnectionPool | None = None
+_pool_lock = threading.Lock()
+
+
+def get_pool() -> ConnectionPool:
+    """Pool de conexiones, creado la primera vez que se usa: importar el módulo no se conecta."""
+    global _pool
+    with _pool_lock:
+        if _pool is None:
+            _pool = ConnectionPool(
+                DSN,
+                min_size=1,
+                max_size=int(os.getenv("DB_POOL_MAX", "10")),
+                timeout=10,
+                check=ConnectionPool.check_connection,  # descarta conexiones que el servidor ya cerró
+                open=True,
+            )
+        return _pool
+
+
+def close_pool() -> None:
+    global _pool
+    with _pool_lock:
+        if _pool is not None:
+            _pool.close()
+            _pool = None
+
+
+atexit.register(close_pool)
+
+
+def ping() -> bool:
+    """True si la base responde. Lo usa el endpoint /health."""
+    try:
+        with get_pool().connection(timeout=3) as conn:
+            conn.execute("SELECT 1")
+        return True
+    except Exception:
+        logger.warning("La base de datos no responde", exc_info=True)
+        return False
+
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
     resultado = []
@@ -29,7 +77,7 @@ def add_chunks(filename: str, chunks: list[str], metadata: list[dict], ids: list
 
     embeddings = embed_texts(chunks)
 
-    with psycopg.connect(DSN) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM documents WHERE filename = %s;", (filename,))
             cur.execute(
@@ -43,8 +91,10 @@ def add_chunks(filename: str, chunks: list[str], metadata: list[dict], ids: list
                     "VALUES (%s, %s, %s, %s, %s, %s::vector)",
                     (ids[i], document_id, i, chunk, Jsonb(metadata[i]), to_vector_literal(embeddings[i])),
                 )
+
+
 def vector_rows(query_embedding: list[float], n: int) -> list[tuple]:
-    with psycopg.connect(DSN) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -68,7 +118,7 @@ def search(query: str, n_results: int = 4) -> dict:
     }
 
 def lexical_rows(query: str, n: int) -> list[tuple]:
-    with psycopg.connect(DSN) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """

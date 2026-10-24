@@ -148,3 +148,89 @@ def test_hybrid_search_with_no_results(monkeypatch):
     monkeypatch.setattr(repo, "lexical_rows", lambda q, n: [])
 
     assert repo.hybrid_search("pregunta") == {"ids": [[]], "documents": [[]], "metadatas": [[]]}
+
+
+# --- pool de conexiones ---
+
+class FakePool:
+    created = []
+
+    def __init__(self, dsn, **kwargs):
+        self.dsn = dsn
+        self.kwargs = kwargs
+        self.closed = False
+        FakePool.created.append(self)
+
+    check_connection = staticmethod(lambda conn: None)
+
+    def close(self):
+        self.closed = True
+
+
+def test_get_pool_is_created_once_and_lazily(monkeypatch):
+    FakePool.created = []
+    monkeypatch.setattr(repo, "_pool", None)
+    monkeypatch.setattr(repo, "ConnectionPool", FakePool)
+    monkeypatch.setenv("DB_POOL_MAX", "7")
+
+    assert FakePool.created == []  # importar o configurar no crea el pool
+    first = repo.get_pool()
+    second = repo.get_pool()
+
+    assert first is second
+    assert len(FakePool.created) == 1
+    assert first.dsn == repo.DSN
+    assert first.kwargs["max_size"] == 7
+    assert first.kwargs["check"] is FakePool.check_connection
+
+
+def test_close_pool_closes_and_resets(monkeypatch):
+    fake = FakePool("dsn")
+    monkeypatch.setattr(repo, "_pool", fake)
+
+    repo.close_pool()
+
+    assert fake.closed
+    assert repo._pool is None
+
+
+def test_close_pool_without_pool_does_nothing(monkeypatch):
+    monkeypatch.setattr(repo, "_pool", None)
+
+    repo.close_pool()  # no debe fallar
+
+
+class FakeConnection:
+    def execute(self, sql):
+        self.sql = sql
+
+
+class WorkingPool:
+    def connection(self, timeout=None):
+        conn = FakeConnection()
+
+        class Ctx:
+            def __enter__(self_inner):
+                return conn
+
+            def __exit__(self_inner, *exc):
+                return False
+
+        return Ctx()
+
+
+class BrokenPool:
+    def connection(self, timeout=None):
+        raise RuntimeError("sin conexión")
+
+
+def test_ping_true_when_database_answers(monkeypatch):
+    monkeypatch.setattr(repo, "get_pool", lambda: WorkingPool())
+
+    assert repo.ping() is True
+
+
+def test_ping_false_when_database_fails(monkeypatch):
+    monkeypatch.setattr(repo, "get_pool", lambda: BrokenPool())
+
+    assert repo.ping() is False
