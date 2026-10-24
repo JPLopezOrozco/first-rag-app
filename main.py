@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
+from service.health import check_health
 from service.ingest import process_document
 from service.query import answer
 from schema import QueryRequest, QueryResponse
@@ -31,6 +32,13 @@ async def reject_oversized_bodies(request: Request, call_next):
             status_code=413,
         )
     return await call_next(request)
+
+
+@app.get("/health")
+async def health():
+    # Sin clave de API ni límite: lo consultan las plataformas para saber si la app está viva.
+    result = await run_in_threadpool(check_health)
+    return JSONResponse(result, status_code=200 if result["status"] == "ok" else 503)
 
 
 @app.post("/documents", dependencies=[Depends(rate_limit(document_limiter))])
