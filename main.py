@@ -1,3 +1,4 @@
+import logging
 import os
 
 from dotenv import load_dotenv
@@ -12,6 +13,11 @@ from starlette.concurrency import run_in_threadpool
 from exceptions.exceptions import UnsupportedFileType, EmptyDocumentError
 
 load_dotenv()
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_MB", "10")) * 1024 * 1024
 ENVELOPE_BYTES = 64 * 1024  # holgura para los encabezados del multipart

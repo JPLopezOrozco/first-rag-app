@@ -1,10 +1,12 @@
 import io
+import logging
 from pypdf import PdfReader
 from docx import Document
 from repository.repository import add_chunks
 import tiktoken
 from exceptions.exceptions import EmptyDocumentError, UnsupportedFileType
 
+logger = logging.getLogger(__name__)
 
 _enc = tiktoken.get_encoding("cl100k_base")
 
@@ -58,6 +60,7 @@ def process_document(data:bytes, filename: str,content_type:str)->int:
     ids = [f"{filename}_chunk_{i}" for i in range(len(chunks))]
     
     add_chunks(filename, chunks, metadata, ids, content_type)
+    logger.info("Documento indexado: %r (%d fragmentos)", filename, len(chunks))
     
     return len(chunks)
 

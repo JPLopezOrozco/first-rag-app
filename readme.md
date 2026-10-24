@@ -59,7 +59,7 @@ Python 3.12 · FastAPI · Pydantic · Postgres 17 + pgvector · psycopg 3 · Voy
 | Router | Llamada corta a Claude Haiku (`SMALLTALK` / `SEARCH`) | Evita buscar y generar ante saludos. Las preguntas ajenas al tema van a búsqueda y se rechazan, para no contestar con el conocimiento del modelo. Costo: una llamada extra por consulta. |
 | Generación | Prompt que restringe al contexto + validación en código | Si la respuesta empieza con la frase de rechazo, o no cita ningún fragmento, se devuelve el rechazo sin fuentes. Las fuentes devueltas son solo las citadas. No se depende de que el modelo obedezca el prompt. |
 | Ingesta | Idempotente y transaccional: en una sola transacción borra el documento (sus fragmentos caen en cascada) e inserta el nuevo | Re-subir un archivo lo reemplaza sin duplicar, y si la inserción falla queda la versión anterior intacta. Costo: el id interno del documento cambia en cada re-subida. |
-| Conexiones | Una conexión a Postgres por consulta | Simple y alcanza para medir. Costo: sin pool, no está pensado para mucha concurrencia. |
+| Conexiones | Pool de conexiones (`psycopg_pool`, hasta 10, configurable con `DB_POOL_MAX`), creado la primera vez que se usa | Evita abrir una conexión (y negociar TLS, si la base es remota) en cada consulta, y respeta el tope de conexiones de la base: si hay más pedidos que conexiones, esperan en cola hasta 10 segundos. `check_connection` descarta las que el servidor ya cerró. Costo: una dependencia más y un estado global que hay que cerrar al terminar. |
 | Errores | Excepciones propias → 415 / 422 | Los errores del cliente se distinguen de los bugs, que salen como 500 y quedan en los logs. |
 | Acceso | Clave de API en el header `X-API-Key`, límite de pedidos por clave (20 consultas y 5 subidas por minuto) y tope de subida de 10 MB, todo configurable por variables de entorno | Cada consulta gasta API de Claude y Voyage, y subir un archivo reemplaza el que tenga el mismo nombre: sin esto cualquiera podría gastar tu dinero o pisar documentos. Si falta `API_KEY` los endpoints devuelven 503 en vez de quedar abiertos. Costo: una sola clave compartida, y el contador de pedidos vive en la memoria de un proceso (se reinicia al redeployar y no se comparte entre réplicas). |
 
@@ -126,6 +126,8 @@ API_KEY=...
 # QUESTION_RATE_PER_MIN=20   consultas por minuto y por clave
 # DOCUMENT_RATE_PER_MIN=5    subidas por minuto y por clave
 # MAX_UPLOAD_MB=10           tamaño máximo de un archivo
+# DB_POOL_MAX=10             conexiones máximas a Postgres
+# LOG_LEVEL=INFO             nivel de logging
 ```
 
 Levantá la base. La primera vez que se crea el volumen, `db/schema.sql` se aplica solo:
@@ -152,7 +154,13 @@ curl -X POST http://127.0.0.1:8000/question \
   -d '{"question": "¿Quién fundó el club?", "n_results": 4}'
 ```
 
-Forma de la respuesta (ejemplo ilustrativo, texto recortado):
+Estado de la app y de la base (no pide clave; responde 503 si la base no contesta):
+
+```bash
+curl http://127.0.0.1:8000/health    # {"status":"ok","database":"ok"}
+```
+
+Forma de la respuesta de `/question` (ejemplo ilustrativo, texto recortado):
 
 ```json
 {
@@ -196,6 +204,7 @@ security.py              clave de API y límite de pedidos
 Dockerfile               imagen de la API
 service/ingest.py        parseo, chunking, ingesta
 service/query.py         router, generación, citas
+service/health.py        chequeo de salud (base de datos)
 repository/repository.py Postgres (pgvector y tsvector), embeddings, búsqueda híbrida (RRF), reranker
 db/schema.sql            tablas documents y chunks, índices HNSW y GIN
 docker-compose.yml       Postgres 17 con pgvector (puerto 5433)
@@ -212,7 +221,7 @@ samples/                 documentos de ejemplo
 - **Una sola clave compartida (`API_KEY`), sin usuarios ni permisos:** quien la tenga puede consultar y también reemplazar cualquier documento subiendo otro con el mismo nombre. El límite de pedidos está en memoria de un proceso, y el tope de subida lo comprueba la app pero el archivo ya llegó al servidor; conviene que el proxy de la plataforma también lo imponga.
 - **Credenciales de desarrollo** (`rag` / `rag`) en `docker-compose.yml`: no sirven para un deploy.
 - El reranker agrega una llamada a Voyage por consulta; si falla, se degrada a búsqueda híbrida. Su latencia y costo no están medidos.
-- Una conexión nueva a Postgres por consulta, sin pool; el schema se aplica solo al crear la base y no hay migraciones.
+- El schema se aplica solo al crear la base (`initdb.d`) y no hay migraciones.
 - `ts_rank_cd` no es BM25 (sin IDF ni normalización por largo): la rama de palabras rankea peor, y se compensa con el reranker.
 - La ingesta es síncrona (sin cola ni worker).
 - Sin historial de conversación: cada pregunta es independiente ("¿y el estadio?" no funciona).
