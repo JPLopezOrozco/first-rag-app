@@ -113,7 +113,7 @@ Necesitás Docker (para Postgres) y Python 3.12.
 
 ```bash
 python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt    # solo para correr la API: requirements.txt
 ```
 
 Creá un `.env` con las claves. `API_KEY` es la clave que tienen que mandar los clientes de la API (generá una con `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`). Las demás variables son opcionales:

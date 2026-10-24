@@ -3,8 +3,6 @@
 venv/
 .venv/
 
-chromadb/
-
 .git
 .gitignore
 .idea/
@@ -22,3 +20,4 @@ Dockerfile
 .dockerignore
 readme.md
 CLAUDE.md
+requirements-dev.txt

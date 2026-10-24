@@ -14,6 +14,7 @@ All commands must run from the repo root: the evals open `evals/dataset.json` re
 
 ```bash
 source venv/bin/activate
+pip install -r requirements-dev.txt   # runtime deps + pytest; the Docker image installs only requirements.txt
 docker compose up -d                # Postgres 17 + pgvector on host port 5433 (needed by everything below except the pure unit tests)
 python3 -m scripts.reindex          # (re)index samples/banfield*.txt into Postgres
 uvicorn app.main:app --reload           # API: POST /documents (multipart file), POST /question
@@ -62,4 +63,4 @@ Current numbers on Postgres: `run_eval` gives semantic 0.88/0.73, hybrid 0.75 0.
 
 ## Status
 
-The Chroma → Postgres migration lives on branch `feat/pgvector-migration` and is not merged. `main` still has the Chroma + in-memory BM25 version (commit `ee88a27`), useful as a baseline. The local `chromadb/` directory is a leftover and no code reads it. Not done yet: a paraphrased validation set for the evals, measuring reranker latency/cost, trimming `requirements.txt` (still carries Chroma's transitive dependencies, ~700 MB image), and choosing a hosting platform and managed Postgres.
+The Chroma → Postgres migration lives on branch `feat/pgvector-migration` and is not merged. `main` still has the Chroma + in-memory BM25 version (commit `ee88a27`), useful as a baseline. The local `chromadb/` directory is a leftover and no code reads it. Not done yet: a paraphrased validation set for the evals, measuring reranker latency/cost, and choosing a hosting platform and managed Postgres.
