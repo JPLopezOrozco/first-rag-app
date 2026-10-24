@@ -61,6 +61,7 @@ Python 3.12 · FastAPI · Pydantic · Postgres 17 + pgvector · psycopg 3 · Voy
 | Ingesta | Idempotente y transaccional: en una sola transacción borra el documento (sus fragmentos caen en cascada) e inserta el nuevo | Re-subir un archivo lo reemplaza sin duplicar, y si la inserción falla queda la versión anterior intacta. Costo: el id interno del documento cambia en cada re-subida. |
 | Conexiones | Una conexión a Postgres por consulta | Simple y alcanza para medir. Costo: sin pool, no está pensado para mucha concurrencia. |
 | Errores | Excepciones propias → 415 / 422 | Los errores del cliente se distinguen de los bugs, que salen como 500 y quedan en los logs. |
+| Acceso | Clave de API en el header `X-API-Key`, límite de pedidos por clave (20 consultas y 5 subidas por minuto) y tope de subida de 10 MB, todo configurable por variables de entorno | Cada consulta gasta API de Claude y Voyage, y subir un archivo reemplaza el que tenga el mismo nombre: sin esto cualquiera podría gastar tu dinero o pisar documentos. Si falta `API_KEY` los endpoints devuelven 503 en vez de quedar abiertos. Costo: una sola clave compartida, y el contador de pedidos vive en la memoria de un proceso (se reinicia al redeployar y no se comparte entre réplicas). |
 
 ## Evaluación
 
@@ -115,12 +116,16 @@ python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Creá un `.env` con las claves (`DATABASE_URL` es opcional; por defecto apunta al Postgres del `docker-compose.yml`):
+Creá un `.env` con las claves. `API_KEY` es la clave que tienen que mandar los clientes de la API (generá una con `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`). Las demás variables son opcionales:
 
 ```
 ANTHROPIC_API_KEY=...
 VOYAGE_API_KEY=...
-# DATABASE_URL=postgresql://rag:rag@localhost:5433/rag
+API_KEY=...
+# DATABASE_URL=postgresql://rag:rag@localhost:5433/rag   (por defecto, el Postgres del docker-compose.yml)
+# QUESTION_RATE_PER_MIN=20   consultas por minuto y por clave
+# DOCUMENT_RATE_PER_MIN=5    subidas por minuto y por clave
+# MAX_UPLOAD_MB=10           tamaño máximo de un archivo
 ```
 
 Levantá la base. La primera vez que se crea el volumen, `db/schema.sql` se aplica solo:
@@ -138,9 +143,11 @@ Subir un documento y preguntar:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/documents \
+  -H "X-API-Key: $API_KEY" \
   -F "file=@samples/banfield.txt;type=text/plain"
 
 curl -X POST http://127.0.0.1:8000/question \
+  -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"question": "¿Quién fundó el club?", "n_results": 4}'
 ```
@@ -172,11 +179,21 @@ Si el volumen de Postgres ya existía, `schema.sql` no se vuelve a aplicar solo.
 docker compose exec -T db psql -U rag -d rag < db/schema.sql
 ```
 
+Para correr la API en un contenedor (con la base del compose levantada; `host.docker.internal` funciona en Docker Desktop):
+
+```bash
+docker build -t rag-api .
+docker run --rm -p 8000:8000 --env-file .env \
+  -e DATABASE_URL=postgresql://rag:rag@host.docker.internal:5433/rag rag-api
+```
+
 ## Estructura
 
 ```
 main.py                  endpoints FastAPI
 schema.py                modelos Pydantic de entrada y salida
+security.py              clave de API y límite de pedidos
+Dockerfile               imagen de la API
 service/ingest.py        parseo, chunking, ingesta
 service/query.py         router, generación, citas
 repository/repository.py Postgres (pgvector y tsvector), embeddings, búsqueda híbrida (RRF), reranker
@@ -192,7 +209,7 @@ samples/                 documentos de ejemplo
 ## Limitaciones conocidas
 
 - Corpus chico y de un solo tema; los resultados son orientativos.
-- **Sin autenticación ni límite de consultas:** no exponer públicamente tal como está.
+- **Una sola clave compartida (`API_KEY`), sin usuarios ni permisos:** quien la tenga puede consultar y también reemplazar cualquier documento subiendo otro con el mismo nombre. El límite de pedidos está en memoria de un proceso, y el tope de subida lo comprueba la app pero el archivo ya llegó al servidor; conviene que el proxy de la plataforma también lo imponga.
 - **Credenciales de desarrollo** (`rag` / `rag`) en `docker-compose.yml`: no sirven para un deploy.
 - El reranker agrega una llamada a Voyage por consulta; si falla, se degrada a búsqueda híbrida. Su latencia y costo no están medidos.
 - Una conexión nueva a Postgres por consulta, sin pool; el schema se aplica solo al crear la base y no hay migraciones.

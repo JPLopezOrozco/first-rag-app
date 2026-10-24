@@ -23,7 +23,7 @@ python3 -m evals.run_eval           # retrieval eval: recall@4 + MRR (calls Voya
 python3 -m evals.e2e_evals          # end-to-end answer/refuse eval (calls Claude, ~US$0.10/run, ~100 s)
 ```
 
-`.env` needs `ANTHROPIC_API_KEY` and `VOYAGE_API_KEY`; `DATABASE_URL` is optional and defaults to `postgresql://rag:rag@localhost:5433/rag` (the `docker-compose.yml` credentials). `repository/repository.py` builds the Voyage client **at import time**, so even the unit tests that import it need `VOYAGE_API_KEY` set. It does not connect to Postgres at import: every query opens its own connection (no pool).
+`.env` needs `ANTHROPIC_API_KEY` and `VOYAGE_API_KEY`, plus `API_KEY` for the HTTP endpoints (clients send it in the `X-API-Key` header; if it is unset, `/documents` and `/question` answer 503 instead of staying open). Optional: `QUESTION_RATE_PER_MIN` (20), `DOCUMENT_RATE_PER_MIN` (5), `MAX_UPLOAD_MB` (10). `DATABASE_URL` is optional and defaults to `postgresql://rag:rag@localhost:5433/rag` (the `docker-compose.yml` credentials). `repository/repository.py` builds the Voyage client **at import time**, so even the unit tests that import it need `VOYAGE_API_KEY` set. It does not connect to Postgres at import: every query opens its own connection (no pool).
 
 `db/schema.sql` is mounted into `docker-entrypoint-initdb.d`, so it only runs when the `pgdata` volume is created. To re-apply it to an existing database (it is idempotent): `docker compose exec -T db psql -U rag -d rag < db/schema.sql`. There are no migrations.
 
@@ -34,6 +34,8 @@ There is no linter or formatter configured.
 ## Architecture
 
 Layers: `main.py` (HTTP only) → `service/` (domain logic, no HTTP knowledge) → `repository/repository.py` (Postgres/pgvector, Voyage embeddings, RRF, Voyage reranker). Services raise domain exceptions from `exceptions/exceptions.py`; `main.py` maps them to status codes (`UnsupportedFileType` → 415, `EmptyDocumentError` → 422). Sync service functions are called via `run_in_threadpool`.
+
+**Access control** (`security.py`, wired in `main.py`): both endpoints depend on `rate_limit(limiter)`, which first checks the API key (`hmac.compare_digest`) and then applies an in-memory sliding-window `RateLimiter` keyed by that key (429 with `Retry-After`). A middleware answers 413 for bodies whose declared `Content-Length` exceeds `MAX_UPLOAD_MB` (+64 KiB of multipart overhead), and `/documents` also reads at most `MAX_UPLOAD_BYTES + 1` bytes. The limiter lives in one process's memory, so it does not work across replicas. HTTP tests replace `main.answer` / `main.process_document` with fakes (`tests/test_security.py`).
 
 **Storage** (`db/schema.sql`): `documents(id, filename UNIQUE, content_type, created_at)` and `chunks(id, document_id → documents ON DELETE CASCADE, chunk, content, n_tokens, metadata jsonb, embedding vector(1024), tsv)`. `tsv` is a generated `to_tsvector('spanish', content)` column. Indexes: HNSW (cosine) on `embedding`, GIN on `tsv`.
 
