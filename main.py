@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from service.ingest import process_document
-from service.query import answer_question, answer
+from service.query import answer
 from schema import QueryRequest, QueryResponse
 from starlette.concurrency import run_in_threadpool
 from exceptions.exceptions import UnsupportedFileType, EmptyDocumentError
