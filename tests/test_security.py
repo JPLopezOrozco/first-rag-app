@@ -10,8 +10,6 @@ HEADERS = {"X-API-Key": KEY}
 QUESTION = {"question": "¿Quién fundó el club?"}
 
 
-# --- RateLimiter (puro, con reloj falso) ---
-
 class Clock:
     def __init__(self):
         self.now = 0.0
@@ -52,8 +50,6 @@ def test_limiter_keys_are_independent():
 
     assert limiter.hit("b") == 0
 
-
-# --- Endpoints (servicios reemplazados por falsos: sin base ni API) ---
 
 @pytest.fixture
 def client(monkeypatch):
@@ -118,7 +114,6 @@ def test_question_rate_limit_returns_429_with_retry_after(client, monkeypatch):
 
 
 def test_upload_over_limit_is_413_in_handler(client, monkeypatch):
-    # el tamaño declarado entra en la holgura del middleware, pero el archivo excede el tope
     monkeypatch.setattr(main, "MAX_UPLOAD_BYTES", 100)
 
     assert upload(client, content=b"x" * 150).status_code == 413

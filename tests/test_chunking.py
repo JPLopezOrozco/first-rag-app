@@ -17,4 +17,3 @@ def test_overlap():
     
     assert result[0].endswith(zone)
     assert result[1].startswith(zone)
-

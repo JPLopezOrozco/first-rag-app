@@ -8,7 +8,6 @@ DIM = 1024
 
 
 def fake_embed(texts):
-    """El chunk k recibe el vector unitario e_k: determinista, sin llamar a Voyage."""
     return [[1.0 if j == k else 0.0 for j in range(DIM)] for k in range(len(texts))]
 
 
@@ -77,7 +76,6 @@ def test_add_chunks_length_mismatch_fails_before_embedding(db, monkeypatch):
 def test_add_chunks_failure_keeps_old_version(db, monkeypatch):
     repo.add_chunks(FILENAME, ["uno", "dos"], meta(2), ids(2), "text/plain")
 
-    # el segundo vector tiene dimensión incorrecta: la inserción falla
     monkeypatch.setattr(repo, "embed_texts", lambda texts: [[1.0] * DIM, [1.0] * 3])
     with pytest.raises(psycopg.Error):
         repo.add_chunks(FILENAME, ["x", "y"], meta(2), ids(2), "text/plain")
@@ -94,7 +92,6 @@ def unit(k):
 
 @pytest.fixture
 def three_chunks(db, monkeypatch):
-    """Tres chunks con vectores e_0, e_1, e_2 y, después, la consulta devuelve e_1."""
     repo.add_chunks(FILENAME, ["uno", "dos", "tres"], meta(3), ids(3), "text/plain")
     monkeypatch.setattr(repo, "embed_texts", lambda texts: [unit(1)])
     return db
@@ -126,7 +123,6 @@ def test_search_respects_n_results_and_orders_by_distance(three_chunks):
 
 @pytest.fixture
 def invented(db):
-    """Dos chunks con palabras inventadas, para no chocar con el corpus real."""
     repo.add_chunks(
         FILENAME,
         ["las zanfordias del norte", "las quimeras del sur"],
@@ -180,13 +176,13 @@ def test_pool_serves_more_threads_than_connections(db, monkeypatch):
     import threading
 
     monkeypatch.setenv("DB_POOL_MAX", "2")
-    monkeypatch.setattr(repo, "_pool", None)  # pool propio de 2 conexiones para esta prueba
+    monkeypatch.setattr(repo, "_pool", None)
     results, errors = [], []
 
     def work():
         try:
             results.append(repo.vector_rows(unit(0), 1))
-        except Exception as e:  # pragma: no cover
+        except Exception as e:
             errors.append(e)
 
     try:

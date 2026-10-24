@@ -18,7 +18,6 @@ class FakeResult:
 
 
 class FakeVoyage:
-    """Reemplaza al cliente de Voyage: cada texto 'x' * i devuelve el vector [i]."""
 
     def __init__(self):
         self.calls = []
@@ -64,7 +63,6 @@ def row(id_, content=None, meta=None, score=0.0):
 
 @pytest.fixture
 def branches(monkeypatch):
-    """Vectorial: a, b. Palabras: b, c. embed_texts cuenta cuántas veces se llama."""
     calls = {"embed": 0}
 
     def fake_embed(texts):
@@ -104,7 +102,7 @@ class FakeRerank:
 
 
 def test_rerank_search_returns_reranked_chunks_in_chroma_shape(branches, monkeypatch):
-    fake = FakeRerank(order=[2, 0, 1])  # c, a, b
+    fake = FakeRerank(order=[2, 0, 1])
     monkeypatch.setattr(repo, "vo", fake)
 
     r = repo.rerank_search("pregunta", k=2, n_each=10)
@@ -131,7 +129,7 @@ def test_rerank_search_without_candidates_does_not_call_rerank(monkeypatch):
 def test_hybrid_search_fuses_both_branches(branches):
     r = repo.hybrid_search("pregunta", n_results=3, alpha=0.5)
 
-    assert r["ids"] == [["b", "a", "c"]]  # b está en las dos ramas
+    assert r["ids"] == [["b", "a", "c"]]
     assert r["documents"] == [["B", "A", "C"]]
     assert r["metadatas"][0][0] == {"source": "s", "chunk": "b"}
 
@@ -149,8 +147,6 @@ def test_hybrid_search_with_no_results(monkeypatch):
 
     assert repo.hybrid_search("pregunta") == {"ids": [[]], "documents": [[]], "metadatas": [[]]}
 
-
-# --- pool de conexiones ---
 
 class FakePool:
     created = []
@@ -173,7 +169,7 @@ def test_get_pool_is_created_once_and_lazily(monkeypatch):
     monkeypatch.setattr(repo, "ConnectionPool", FakePool)
     monkeypatch.setenv("DB_POOL_MAX", "7")
 
-    assert FakePool.created == []  # importar o configurar no crea el pool
+    assert FakePool.created == []
     first = repo.get_pool()
     second = repo.get_pool()
 
@@ -197,7 +193,7 @@ def test_close_pool_closes_and_resets(monkeypatch):
 def test_close_pool_without_pool_does_nothing(monkeypatch):
     monkeypatch.setattr(repo, "_pool", None)
 
-    repo.close_pool()  # no debe fallar
+    repo.close_pool()
 
 
 class FakeConnection:

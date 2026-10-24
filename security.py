@@ -12,7 +12,6 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 def require_api_key(key: str | None = Security(api_key_header)) -> str:
-    """Valida el header X-API-Key contra la variable de entorno API_KEY."""
     expected = os.getenv("API_KEY")
     if not expected:
         raise HTTPException(503, "API_KEY no está configurada en el servidor")
@@ -22,7 +21,6 @@ def require_api_key(key: str | None = Security(api_key_header)) -> str:
 
 
 class RateLimiter:
-    """Ventana deslizante en memoria: como máximo `limit` pedidos por clave cada `window` segundos."""
 
     def __init__(self, limit: int, window: float = 60.0, clock=time.monotonic):
         self.limit = limit
@@ -32,7 +30,6 @@ class RateLimiter:
         self._lock = threading.Lock()
 
     def hit(self, key: str) -> float:
-        """Registra un pedido. Devuelve 0 si se permite o los segundos que faltan para poder reintentar."""
         now = self.clock()
         with self._lock:
             hits = self._hits[key]
@@ -45,7 +42,6 @@ class RateLimiter:
 
 
 def rate_limit(limiter: RateLimiter):
-    """Dependencia de FastAPI: exige la API key y aplica el límite de `limiter` a esa clave."""
 
     def dependency(key: str = Depends(require_api_key)) -> None:
         wait = limiter.hit(key)

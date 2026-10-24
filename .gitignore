@@ -16,6 +16,5 @@ __pycache__/
 .idea/
 .vscode/
 
-# instrucciones locales de Claude Code
 CLAUDE.local.md
 

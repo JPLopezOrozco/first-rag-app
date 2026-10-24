@@ -26,4 +26,4 @@ def test_default_retrieve_falls_back_to_hybrid_and_logs_the_error(monkeypatch, c
     assert result["documents"] == [["hibrido"]]
     assert len(caplog.records) == 1
     assert "reranker" in caplog.records[0].getMessage().lower()
-    assert caplog.records[0].exc_info is not None  # queda el traceback del error original
+    assert caplog.records[0].exc_info is not None

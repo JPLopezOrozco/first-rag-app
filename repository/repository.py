@@ -23,7 +23,6 @@ _pool_lock = threading.Lock()
 
 
 def get_pool() -> ConnectionPool:
-    """Pool de conexiones, creado la primera vez que se usa: importar el módulo no se conecta."""
     global _pool
     with _pool_lock:
         if _pool is None:
@@ -32,7 +31,7 @@ def get_pool() -> ConnectionPool:
                 min_size=1,
                 max_size=int(os.getenv("DB_POOL_MAX", "10")),
                 timeout=10,
-                check=ConnectionPool.check_connection,  # descarta conexiones que el servidor ya cerró
+                check=ConnectionPool.check_connection,
                 open=True,
             )
         return _pool
@@ -50,7 +49,6 @@ atexit.register(close_pool)
 
 
 def ping() -> bool:
-    """True si la base responde. Lo usa el endpoint /health."""
     try:
         with get_pool().connection(timeout=3) as conn:
             conn.execute("SELECT 1")
@@ -171,10 +169,6 @@ def rrf(rankings, weights, k=60):
         for pos, id_ in enumerate(ranking, 1):
             scores[id_] = scores.get(id_, 0) + w / (k + pos)
     return sorted(scores, key=scores.get, reverse=True)
-
-
-
-
 
 
     
