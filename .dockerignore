@@ -1,0 +1,28 @@
+# secretos y entorno local
+.env
+.env.*
+venv/
+.venv/
+
+# datos locales que no van a la imagen
+chromadb/
+
+# control de versiones, editor y caches
+.git
+.gitignore
+.idea/
+.vscode/
+.claude/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# no hacen falta para correr la API
+tests/
+evals/
+docker-compose.yml
+Dockerfile
+.dockerignore
+readme.md
+CLAUDE.md
