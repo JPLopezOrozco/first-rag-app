@@ -1,4 +1,4 @@
-from repository.repository import rrf
+from app.repository.repository import rrf
 
 
 def test_rrf_both_lists():

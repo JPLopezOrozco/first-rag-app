@@ -4,13 +4,13 @@ import os
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
-from service.health import check_health
-from service.ingest import process_document
-from service.query import answer
-from schema import QueryRequest, QueryResponse
-from security import RateLimiter, rate_limit
+from app.service.health import check_health
+from app.service.ingest import process_document
+from app.service.query import answer
+from app.schema import QueryRequest, QueryResponse
+from app.security import RateLimiter, rate_limit
 from starlette.concurrency import run_in_threadpool
-from exceptions.exceptions import UnsupportedFileType, EmptyDocumentError
+from app.exceptions.exceptions import UnsupportedFileType, EmptyDocumentError
 
 load_dotenv()
 

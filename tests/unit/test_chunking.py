@@ -1,4 +1,4 @@
-from service.ingest import chunking_overlap, _enc
+from app.service.ingest import chunking_overlap, _enc
 from pytest import raises
 
 def test_overlap_overflow():

@@ -1,7 +1,7 @@
 import logging
 import re
-from repository.repository import hybrid_search, rerank_search
-from schema import QueryResponse, QueryRequest, Source
+from app.repository.repository import hybrid_search, rerank_search
+from app.schema import QueryResponse, QueryRequest, Source
 from anthropic import Anthropic
 from dotenv import load_dotenv
 

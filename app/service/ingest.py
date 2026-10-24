@@ -2,9 +2,9 @@ import io
 import logging
 from pypdf import PdfReader
 from docx import Document
-from repository.repository import add_chunks
+from app.repository.repository import add_chunks
 import tiktoken
-from exceptions.exceptions import EmptyDocumentError, UnsupportedFileType
+from app.exceptions.exceptions import EmptyDocumentError, UnsupportedFileType
 
 logger = logging.getLogger(__name__)
 

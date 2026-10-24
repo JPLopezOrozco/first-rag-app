@@ -1,6 +1,6 @@
 import unicodedata
 import json
-from repository.repository import search, hybrid_search, rerank_search
+from app.repository.repository import search, hybrid_search, rerank_search
 
 
 def norm(s: str) -> str:

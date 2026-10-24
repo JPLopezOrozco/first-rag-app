@@ -1,7 +1,7 @@
 import pytest
 
-import repository.repository as repo
-from repository.repository import to_vector_literal
+import app.repository.repository as repo
+from app.repository.repository import to_vector_literal
 
 
 def test_to_vector_literal():

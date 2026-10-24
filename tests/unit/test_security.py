@@ -1,9 +1,9 @@
 import pytest
 from fastapi.testclient import TestClient
 
-import main
-from schema import QueryResponse
-from security import RateLimiter
+import app.main as main
+from app.schema import QueryResponse
+from app.security import RateLimiter
 
 KEY = "clave-de-prueba"
 HEADERS = {"X-API-Key": KEY}

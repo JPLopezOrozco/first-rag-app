@@ -1,4 +1,4 @@
-from repository.repository import ping
+from app.repository.repository import ping
 
 
 def check_health() -> dict:

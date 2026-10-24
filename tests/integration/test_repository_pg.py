@@ -1,7 +1,7 @@
 import psycopg
 import pytest
 
-import repository.repository as repo
+import app.repository.repository as repo
 
 FILENAME = "test_repo_add_chunks.txt"
 DIM = 1024

@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-import main
+import app.main as main
 
 
 def test_health_ok_without_api_key(monkeypatch):

@@ -1,6 +1,6 @@
 import logging
 
-import service.query as q
+import app.service.query as q
 
 
 def test_default_retrieve_uses_rerank_when_it_works(monkeypatch, caplog):

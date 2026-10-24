@@ -36,7 +36,7 @@ flowchart LR
   E -.-> H
 ```
 
-**Capas:** `main.py` (HTTP) → `service/` (lógica: ingesta y consulta) → `repository/` (acceso a Postgres, embeddings y reranker). Los servicios no conocen HTTP; el router traduce las excepciones de dominio a códigos de estado.
+**Capas:** `app/main.py` (HTTP) → `app/service/` (lógica: ingesta y consulta) → `app/repository/` (acceso a Postgres, embeddings y reranker). Los servicios no conocen HTTP; el router traduce las excepciones de dominio a códigos de estado.
 
 ## Stack
 
@@ -138,7 +138,7 @@ docker compose up -d
 
 ```bash
 python3 -m scripts.reindex    # indexa los documentos de samples/
-uvicorn main:app --reload
+uvicorn app.main:app --reload
 ```
 
 Subir un documento y preguntar:
@@ -198,19 +198,24 @@ docker run --rm -p 8000:8000 --env-file .env \
 ## Estructura
 
 ```
-main.py                  endpoints FastAPI
-schema.py                modelos Pydantic de entrada y salida
-security.py              clave de API y límite de pedidos
-Dockerfile               imagen de la API
-service/ingest.py        parseo, chunking, ingesta
-service/query.py         router, generación, citas
-service/health.py        chequeo de salud (base de datos)
-repository/repository.py Postgres (pgvector y tsvector), embeddings, búsqueda híbrida (RRF), reranker
+app/
+  main.py                endpoints FastAPI
+  schema.py              modelos Pydantic de entrada y salida
+  security.py            clave de API y límite de pedidos
+  service/
+    ingest.py            parseo, chunking, ingesta
+    query.py             router, generación, citas
+    health.py            chequeo de salud (base de datos)
+  repository/
+    repository.py        Postgres (pgvector y tsvector), embeddings, búsqueda híbrida (RRF), reranker
+  exceptions/            excepciones de dominio
 db/schema.sql            tablas documents y chunks, índices HNSW y GIN
 docker-compose.yml       Postgres 17 con pgvector (puerto 5433)
-exceptions/              excepciones de dominio
+Dockerfile               imagen de la API
 evals/                   dataset y scripts de evaluación
-tests/                   tests unitarios y de integración (pytest)
+tests/
+  unit/                  no necesitan Postgres ni red
+  integration/           necesitan Postgres
 scripts/                 utilidades (reindexado)
 samples/                 documentos de ejemplo
 ```
