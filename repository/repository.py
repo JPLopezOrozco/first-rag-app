@@ -1,65 +1,119 @@
-import chromadb 
-from chromadb.utils import embedding_functions
 from dotenv import load_dotenv
-import re, unicodedata
-from rank_bm25 import BM25Okapi
+from psycopg.types.json import Jsonb
 import os
 import voyageai
-
+import psycopg
 
 load_dotenv()
-embedding_fn = embedding_functions.VoyageAIEmbeddingFunction(
-    api_key=os.environ["VOYAGE_API_KEY"],
-    model_name="voyage-4-lite",
-)
+
+DSN = os.getenv("DATABASE_URL", "postgresql://rag:rag@localhost:5433/rag")
+EMBED_MODEL = "voyage-4-lite"
+EMBED_BATCH = 128
 
 vo = voyageai.Client(api_key=os.environ["VOYAGE_API_KEY"])
-client = chromadb.PersistentClient(path="chromadb")
 
-collection = client.get_or_create_collection(
-    name="documents_collection",
-    embedding_function=embedding_fn,
-    metadata={"hnsw:space": "cosine"},
-)
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    resultado = []
+    for i in range(0, len(texts), EMBED_BATCH):
+        lote = texts[i:i + EMBED_BATCH]
+        resultado.extend(vo.embed(texts=lote, model=EMBED_MODEL).embeddings)
+    return resultado
+
+def to_vector_literal(vector: list[float]) -> str:
+    return f"{vector}".replace(" ", "")
 
 
-def add_chunks(filename: str, chunks: list[str], metadata: list[dict], ids: list[str]) -> None:
-    global _bm25
-    collection.delete(where={"source": filename})
-    collection.upsert(documents=chunks, metadatas=metadata, ids=ids)
-    _bm25 = None
-    
+def add_chunks(filename: str, chunks: list[str], metadata: list[dict], ids: list[str], content_type: str) -> None:
+    if not (len(chunks) == len(metadata) == len(ids)):
+        raise ValueError("chunks, metadata e ids deben tener el mismo largo")
+
+    embeddings = embed_texts(chunks)
+
+    with psycopg.connect(DSN) as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM documents WHERE filename = %s;", (filename,))
+            cur.execute(
+                "INSERT INTO documents (filename, content_type) VALUES (%s, %s) RETURNING id;",
+                (filename, content_type),
+            )
+            document_id = cur.fetchone()[0]
+            for i, chunk in enumerate(chunks):
+                cur.execute(
+                    "INSERT INTO chunks (id, document_id, chunk, content, metadata, embedding) "
+                    "VALUES (%s, %s, %s, %s, %s, %s::vector)",
+                    (ids[i], document_id, i, chunk, Jsonb(metadata[i]), to_vector_literal(embeddings[i])),
+                )
+def vector_rows(query_embedding: list[float], n: int) -> list[tuple]:
+    with psycopg.connect(DSN) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, content, metadata, embedding <=> %s::vector AS distance
+                FROM chunks
+                ORDER BY distance
+                LIMIT %s;
+                """,
+                (to_vector_literal(query_embedding), n),
+            )
+            return cur.fetchall()
+
+
 def search(query: str, n_results: int = 4) -> dict:
-    return collection.query(
-        query_texts=[query],
-        n_results=n_results,
-        include=["documents", "metadatas", "distances"],
-    )
-    
-def tokenize(s: str) -> list[str]:
-    s = unicodedata.normalize("NFD", s.lower())
-    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
-    return re.findall(r"\w+", s)
+    rows = vector_rows(embed_texts([query])[0], n_results)
+    return {
+        "ids": [[r[0] for r in rows]],
+        "documents": [[r[1] for r in rows]],
+        "metadatas": [[r[2] for r in rows]],
+        "distances": [[r[3] for r in rows]],
+    }
 
-_bm25 = None
-_ids: list[str] = []
+def lexical_rows(query: str, n: int) -> list[tuple]:
+    with psycopg.connect(DSN) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH q AS (
+                    SELECT replace(websearch_to_tsquery('spanish', %s)::text, '&', '|')::tsquery AS query
+                )
+                SELECT id, content, metadata, ts_rank_cd(tsv, query) AS rank
+                FROM chunks, q
+                WHERE tsv @@ query
+                ORDER BY rank DESC, id
+                LIMIT %s;
+                """,
+                (query, n),
+            )
+            return cur.fetchall()
 
-def _build_bm25():
-    global _bm25, _ids
-    todos = collection.get(include=["documents"])
-    _ids = todos["ids"]
-    _bm25 = BM25Okapi([tokenize(d) for d in todos["documents"]])
-    
-def vector_ids(query, n):
-    r = collection.query(query_texts=[query], n_results=n)
-    return r["ids"][0]
+def candidate_rows(query: str, n_each: int = 10) -> list[tuple]:
+    by_id = {}
+    for row in vector_rows(embed_texts([query])[0], n_each) + lexical_rows(query, n_each):
+        by_id.setdefault(row[0], row)
+    return list(by_id.values())
 
-def bm25_ids(query, n):
-    if _bm25 is None:
-        _build_bm25()
-    scores = _bm25.get_scores(tokenize(query))
-    top = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:n]
-    return [_ids[i] for i in top if scores[i] > 0] 
+def rerank_search(query: str, k: int = 4, n_each: int = 20) -> dict:
+    rows = candidate_rows(query, n_each)
+    if not rows:
+        return {"documents": [[]], "metadatas": [[]], "scores": [[]]}
+
+    rr = vo.rerank(query, [r[1] for r in rows], model="rerank-2.5", top_k=k)
+    return {
+        "documents": [[x.document for x in rr.results]],
+        "metadatas": [[rows[x.index][2] for x in rr.results]],
+        "scores": [[x.relevance_score for x in rr.results]],
+    }
+
+def hybrid_search(query: str, n_results: int = 4, alpha: float = 0.5, pool: int = 20) -> dict:
+    vec = vector_rows(embed_texts([query])[0], pool)
+    lex = lexical_rows(query, pool)
+    fused = rrf([[r[0] for r in vec], [r[0] for r in lex]], [alpha, 1 - alpha])[:n_results]
+    by_id = {r[0]: r for r in vec + lex}
+    return {
+        "ids": [fused],
+        "documents": [[by_id[i][1] for i in fused]],
+        "metadatas": [[by_id[i][2] for i in fused]],
+    }
+
 
 def rrf(rankings, weights, k=60):
     scores = {}
@@ -69,42 +123,8 @@ def rrf(rankings, weights, k=60):
     return sorted(scores, key=scores.get, reverse=True)
 
 
-def hybrid_search(query:str, n_results: int = 4, alpha: float = 0.5, pool: int =20)->dict:
-    if collection.count() == 0:
-        return {"ids": [[]], "documents": [[]], "metadatas": [[]]}
-    fused = rrf(
-        [vector_ids(query, pool), bm25_ids(query, pool)],
-        [alpha, 1 - alpha],
-    )[:n_results]
-    
-    got = collection.get(ids=fused, include=["documents", "metadatas"])
-    by_id = {i: (d, m) for i, d, m in zip(got["ids"], got["documents"], got["metadatas"])}
-    return {
-        "ids": [fused],
-        "documents": [[by_id[i][0] for i in fused]],
-        "metadatas": [[by_id[i][1] for i in fused]]
-    }
 
 
-def candidate_ids(query: str, n_each: int = 10) -> list[str]:
-    return list(dict.fromkeys(vector_ids(query, n_each) + bm25_ids(query, n_each)))
 
 
-def rerank_search(query:str, k:int=4, n_each:int = 20)->dict:
-    ids = candidate_ids(query, n_each)
-    got = collection.get(ids=ids, include=["documents", "metadatas"])
-    by_id = {i: (d, m) for i, d, m in zip(got["ids"], got["documents"], got["metadatas"])}
-
-    ids = [i for i in ids if i in by_id]
-    docs = [by_id[i][0] for i in ids]
-    metas = [by_id[i][1] for i in ids]
-    
-    rr = vo.rerank(query, docs, model="rerank-2.5", top_k=k)
-    
-    return {
-        "documents":[[x.document for x in rr.results]],
-        "metadatas":[[metas[x.index] for x in rr.results]],
-        "scores": [[x.relevance_score for x in rr.results]]
-    }    
-        
     

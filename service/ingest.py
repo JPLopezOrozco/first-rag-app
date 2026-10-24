@@ -29,7 +29,6 @@ def read_document(data:bytes, content_type:str)->str:
         content = data.decode("utf-8", errors="replace")
     elif ext ==".docx":
         content = "\n".join(p.text for p in Document(io.BytesIO(data)).paragraphs)
-    
     return content
 
 
@@ -58,7 +57,7 @@ def process_document(data:bytes, filename: str,content_type:str)->int:
     metadata = [{"source": filename, "chunk":i } for i in range(len(chunks))]
     ids = [f"{filename}_chunk_{i}" for i in range(len(chunks))]
     
-    add_chunks(filename, chunks, metadata, ids)
+    add_chunks(filename, chunks, metadata, ids, content_type)
     
     return len(chunks)
 
