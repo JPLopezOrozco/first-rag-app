@@ -90,11 +90,11 @@ Los mismos números con **Chroma + BM25 en memoria** (antes de la migración, co
 | hybrid, alpha 1 (equivale a semantic) | 0.88 | 0.73 | 0.92 | 0.79 |
 | **rerank sobre la unión de candidatos (20+20)** | **1.00** | **1.00** | no medido | no medido |
 
-La migración mantiene el resultado del camino principal (rerank 1.00 / 1.00) y el vectorial idéntico. El híbrido, que ahora es solo el fallback, bajó de 0.96 a 0.92: una pregunta, dentro del ruido, pero la rama de palabras ya no es BM25 y no se puede afirmar que sean equivalentes.
+La migración mantiene el resultado del camino principal (rerank 1.00 / 1.00) y el vectorial idéntico. El híbrido, que ahora es solo el fallback, bajó de 0.96 a 0.92: una pregunta, dentro del ruido, pero la rama de palabras ya no es BM25 y no se puede afirmar que sean equivalentes. Estas cifras se volvieron a medir después de sumar el pool de conexiones, las excepciones propias y la interfaz, y no cambiaron.
 
 Configuración por defecto: **reranker sobre la unión de candidatos, chunks de 500/100**, con hybrid (alpha 0.75) como fallback. Está pendiente de validar con preguntas que no se hayan usado para diseñarla.
 
-**Extremo a extremo** (`python3 -m evals.e2e_evals`): con el reranker sobre Postgres, **11/11** preguntas sin respuesta rechazadas correctamente y **0/25** con respuesta rechazadas por error (una sola corrida). Antes de la migración, con búsqueda híbrida (alpha 0.75) sobre Chroma, eran 11/11 y 1/25 (la de "tabla histórica", ver hallazgos). Mide si el sistema responde o rechaza, **no** si la respuesta es correcta. Una corrida tarda unos 100 segundos y cuesta del orden de US$0,10 de API (estimado).
+**Extremo a extremo** (`python3 -m evals.e2e_evals`): con el reranker sobre Postgres, **11/11** preguntas sin respuesta rechazadas correctamente y **0/25** con respuesta rechazadas por error (una sola corrida). Antes de la migración, con búsqueda híbrida (alpha 0.75) sobre Chroma, eran 11/11 y 1/25 (la de "tabla histórica", ver hallazgos). Mide si el sistema responde o rechaza, **no** si la respuesta es correcta. Una corrida tarda unos 100 segundos y cuesta del orden de US$0,10 de API (estimado). Se corrió antes del pool de conexiones y de las excepciones propias y no se repitió desde entonces.
 
 ### Hallazgos
 
@@ -231,18 +231,23 @@ scripts/                 utilidades (reindexado)
 samples/                 documentos de ejemplo
 ```
 
+## Estado
+
+- **Hecho:** pipeline completo con reranker, migración a Postgres + pgvector, seguridad (clave, límites y tope de subida), pool de conexiones, `/health`, excepciones propias, imagen de Docker con `docker compose` e interfaz web.
+- **Pendiente:** el despliegue (la base en Neon y la app en Render), un set de validación con preguntas parafraseadas, medir la latencia y el costo del reranker, y probar la interfaz en dispositivos reales (iOS y Android).
+- La versión anterior, con Chroma y BM25 en memoria, está en el commit `ee88a27` como punto de comparación.
+
 ## Limitaciones conocidas
 
 - Corpus chico y de un solo tema; los resultados son orientativos.
 - **`/question` es público:** cualquiera puede gastar cuota de Claude y Voyage hasta el tope global (`GLOBAL_RATE_PER_MIN`). Los límites viven en la memoria de un proceso y la IP depende de `TRUSTED_PROXY_HOPS`.
 - **Una sola clave compartida (`API_KEY`) para subir documentos, sin usuarios ni permisos:** quien la tenga puede reemplazar cualquier documento subiendo otro con el mismo nombre. El tope de subida lo comprueba la app, pero el archivo ya llegó al servidor; conviene que el proxy de la plataforma también lo imponga.
-- **El chat no tiene memoria:** cada pregunta se responde sola, y la interfaz lo avisa.
+- **El chat no tiene memoria:** cada pregunta se responde sola ("¿y el estadio?" no funciona) y la interfaz lo avisa.
 - **Credenciales de desarrollo** (`rag` / `rag`) en `docker-compose.yml`: no sirven para un deploy.
 - El reranker agrega una llamada a Voyage por consulta; si falla, se degrada a búsqueda híbrida. Su latencia y costo no están medidos.
 - El schema se aplica solo al crear la base (`initdb.d`) y no hay migraciones.
 - `ts_rank_cd` no es BM25 (sin IDF ni normalización por largo): la rama de palabras rankea peor, y se compensa con el reranker.
 - La ingesta es síncrona (sin cola ni worker).
-- Sin historial de conversación: cada pregunta es independiente ("¿y el estadio?" no funciona).
 - Las citas no se verifican automáticamente (falta evaluar groundedness).
 - El chunking corta por tokens y un fragmento puede mezclar varios temas; falta probar el corte por párrafos.
 
