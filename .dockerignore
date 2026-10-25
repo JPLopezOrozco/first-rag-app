@@ -21,3 +21,4 @@ Dockerfile
 readme.md
 CLAUDE.md
 requirements-dev.txt
+docs/
