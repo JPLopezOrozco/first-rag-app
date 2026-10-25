@@ -6,6 +6,7 @@ class QueryRequest(BaseModel):
     n_results: int = Field(default=4, ge=1, le=10)
 
 class Source(BaseModel):
+    ref: int
     source: str 
     text: str
     chunk: int

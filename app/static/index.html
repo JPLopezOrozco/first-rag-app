@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Taladro, el asistente de Banfield</title>
+<meta name="description" content="Preguntale a Taladro por la historia, los ídolos, los récords y el estadio del Club Atlético Banfield. Asistente no oficial, hecho por y para hinchas.">
+<meta name="theme-color" content="#f6faf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0c0d0c" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="/fonts/barlow-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/barlow-condensed-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/styles.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<svg class="defs" width="0" height="0" aria-hidden="true" focusable="false">
+  <defs>
+    <clipPath id="bit-clip"><path d="M7.5 3h9v10.5L12 23l-4.5-9.5z"/></clipPath>
+    <symbol id="mark" viewBox="0 0 24 24">
+      <path d="M7.5 3h9v10.5L12 23l-4.5-9.5z" fill="currentColor"/>
+      <g class="flutes" clip-path="url(#bit-clip)" fill="none" stroke-width="1.7">
+        <path d="M6 8.2 18 4.6M6 12.2 18 8.6M6 16.2 18 12.6M6 20.2 18 16.6"/>
+      </g>
+      <rect x="6.5" y="1" width="11" height="2.6" rx="1.3" fill="currentColor"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="app" data-state="empty">
+  <header class="bar">
+    <a class="brand" href="/" aria-label="Taladro, inicio">
+      <svg class="mark" aria-hidden="true" focusable="false"><use href="#mark"/></svg>
+      <span class="brand-name">Taladro</span>
+    </a>
+    <p class="scope">Asistente no oficial del Club Atlético Banfield</p>
+    <button type="button" class="quiet" id="reset" hidden>Nueva conversación</button>
+    <svg class="kit" aria-hidden="true" focusable="false" width="100%" height="100%">
+      <defs>
+        <pattern id="kit-pattern" width="56" height="56" patternUnits="userSpaceOnUse">
+          <rect class="kit-stripe" width="28" height="56"/>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#kit-pattern)"/>
+    </svg>
+  </header>
+
+  <div class="stage">
+    <main id="main">
+      <section class="welcome" id="welcome" aria-labelledby="title">
+        <h1 id="title">¿Qué querés saber del Taladro?</h1>
+        <p class="lede">Preguntame por la historia, los ídolos, los récords y el estadio. Te contesto con lo que dicen los documentos y te muestro de dónde salió cada dato.</p>
+        <p class="try" id="try-label">Probá con alguna de estas</p>
+        <ul class="suggestions" aria-labelledby="try-label"></ul>
+      </section>
+      <ol class="log" id="log" role="log" aria-live="polite" aria-label="Conversación con Taladro"></ol>
+    </main>
+
+    <div class="dock">
+      <form class="composer" id="composer" autocomplete="off">
+        <label class="sr-only" for="q">Tu pregunta</label>
+        <textarea id="q" rows="1" maxlength="1000" placeholder="Escribí tu pregunta" enterkeyhint="send" aria-describedby="legal"></textarea>
+        <span class="count" id="count" aria-live="polite"></span>
+        <button type="submit" class="send" id="send">Preguntar</button>
+      </form>
+      <p class="legal" id="legal">No es oficial. Cada pregunta se responde sola y Taladro puede equivocarse. Los textos son de <a href="https://es.wikipedia.org/wiki/Club_Atl%C3%A9tico_Banfield" target="_blank" rel="noopener">Wikipedia</a> (<a href="https://creativecommons.org/licenses/by-sa/4.0/deed.es" target="_blank" rel="noopener">CC BY-SA 4.0</a>).</p>
+    </div>
+  </div>
+</div>
+<noscript><p class="nojs">Necesitás activar JavaScript para chatear con Taladro.</p></noscript>
+</body>
+</html>

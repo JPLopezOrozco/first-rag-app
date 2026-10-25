@@ -1,14 +1,16 @@
 import logging
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from app.service.health import check_health
 from app.service.ingest import process_document
 from app.service.query import answer
 from app.schema import QueryRequest, QueryResponse
-from app.security import RateLimiter, rate_limit
+from app.security import RateLimiter, public_rate_limit, rate_limit
 from starlette.concurrency import run_in_threadpool
 from app.exceptions.exceptions import UnsupportedFileType, EmptyDocumentError
 
@@ -22,10 +24,28 @@ logging.basicConfig(
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_MB", "10")) * 1024 * 1024
 ENVELOPE_BYTES = 64 * 1024
 
-question_limiter = RateLimiter(int(os.getenv("QUESTION_RATE_PER_MIN", "20")))
+question_limiter = RateLimiter(int(os.getenv("QUESTION_RATE_PER_MIN", "10")))
+global_question_limiter = RateLimiter(int(os.getenv("GLOBAL_RATE_PER_MIN", "120")))
 document_limiter = RateLimiter(int(os.getenv("DOCUMENT_RATE_PER_MIN", "5")))
 
+STATIC_DIR = Path(__file__).parent / "static"
+DOC_PATHS = ("/docs", "/redoc", "/openapi.json")
+CSP = (
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+    "font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+)
+
 app = FastAPI()
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    if not request.url.path.startswith(DOC_PATHS):
+        response.headers.setdefault("Content-Security-Policy", CSP)
+    return response
 
 
 @app.middleware("http")
@@ -64,7 +84,10 @@ async def ingest_documents(file: UploadFile = File(...)):
     "/question",
     response_model=QueryResponse,
     response_model_exclude_none=True,
-    dependencies=[Depends(rate_limit(question_limiter))],
+    dependencies=[Depends(public_rate_limit(question_limiter, global_question_limiter))],
 )
 async def query_request(query: QueryRequest) -> QueryResponse:
     return await run_in_threadpool(answer, query)
+
+
+app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

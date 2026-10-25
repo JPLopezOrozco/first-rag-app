@@ -4,8 +4,10 @@ Sistema de preguntas y respuestas sobre documentos (PDF, DOCX, TXT) con **citas 
 
 ## Qué hace
 
-1. Subís un documento (`POST /documents`): se parsea, se divide en fragmentos y se indexa.
-2. Hacés una pregunta en lenguaje natural (`POST /question`).
+**Taladro** es un chat web no oficial sobre el Club Atlético Banfield, servido por la propia app en `/`.
+
+1. Subís un documento (`POST /documents`, con clave): se parsea, se divide en fragmentos y se indexa.
+2. Hacés una pregunta en lenguaje natural, desde el chat o con `POST /question`.
 3. El sistema recupera los fragmentos más relevantes y Claude responde **solo con ese contexto**, citando los fragmentos usados con `[1]`, `[2]`, etc.
 4. Si la respuesta no está en los documentos, responde que no la encuentra en vez de inventar.
 
@@ -36,7 +38,7 @@ flowchart LR
   E -.-> H
 ```
 
-**Capas:** `app/main.py` (HTTP) → `app/service/` (lógica: ingesta y consulta) → `app/repository/` (acceso a Postgres, embeddings y reranker). Los servicios no conocen HTTP; el router traduce las excepciones de dominio a códigos de estado.
+**Capas:** `app/static/` (la interfaz web: HTML, CSS y JavaScript sin framework ni paso de build) → `app/main.py` (HTTP) → `app/service/` (lógica: ingesta y consulta) → `app/repository/` (acceso a Postgres, embeddings y reranker). Los servicios no conocen HTTP; el router traduce las excepciones de dominio a códigos de estado.
 
 ## Stack
 
@@ -61,7 +63,8 @@ Python 3.12 · FastAPI · Pydantic · Postgres 17 + pgvector · psycopg 3 · Voy
 | Ingesta | Idempotente y transaccional: en una sola transacción borra el documento (sus fragmentos caen en cascada) e inserta el nuevo | Re-subir un archivo lo reemplaza sin duplicar, y si la inserción falla queda la versión anterior intacta. Costo: el id interno del documento cambia en cada re-subida. |
 | Conexiones | Pool de conexiones (`psycopg_pool`, hasta 10, configurable con `DB_POOL_MAX`), creado la primera vez que se usa | Evita abrir una conexión (y negociar TLS, si la base es remota) en cada consulta, y respeta el tope de conexiones de la base: si hay más pedidos que conexiones, esperan en cola hasta 10 segundos. `check_connection` descarta las que el servidor ya cerró. Costo: una dependencia más y un estado global que hay que cerrar al terminar. |
 | Errores | Excepciones propias que heredan de `RagError` (415 y 422 para los errores del cliente) y nunca `ValueError` o `Exception` genéricas | Los errores del cliente se distinguen de los bugs, que salen como 500 y quedan en los logs. El fallback del reranker se activa solo con `RerankError` (falla de la llamada a Voyage); un bug inesperado no se disfraza de degradación. Costo: una clase por cada caso. |
-| Acceso | Clave de API en el header `X-API-Key`, límite de pedidos por clave (20 consultas y 5 subidas por minuto) y tope de subida de 10 MB, todo configurable por variables de entorno | Cada consulta gasta API de Claude y Voyage, y subir un archivo reemplaza el que tenga el mismo nombre: sin esto cualquiera podría gastar tu dinero o pisar documentos. Si falta `API_KEY` los endpoints devuelven 503 en vez de quedar abiertos. Costo: una sola clave compartida, y el contador de pedidos vive en la memoria de un proceso (se reinicia al redeployar y no se comparte entre réplicas). |
+| Interfaz | Una sola página estática (HTML, CSS y JS) que servimos desde FastAPI, con tipografía propia (Barlow, licencia OFL), modo claro y oscuro, citas `[n]` que abren la fuente y estados de carga, error y límite de pedidos | Mismo contenedor y mismo origen: sin CORS, sin build y sin Node en la imagen. El texto del modelo se pinta siempre con `textContent` (nunca `innerHTML`) y la página corre con una política CSP estricta, sin scripts ni estilos en línea. Costo: sin framework, el código de la interfaz es más manual. |
+| Acceso | `POST /question` es público, con un límite por IP (10 por minuto) y un tope global (120 por minuto); `POST /documents` exige la clave `X-API-Key` (5 subidas por minuto) y hay un tope de subida de 10 MB. Todo se configura con variables de entorno | Un navegador no puede guardar una clave, así que la consulta es abierta y lo que se protege es el gasto: el tope global acota la cuenta de Claude y Voyage aunque alguien falsifique su IP, y subir un archivo reemplaza el que tenga el mismo nombre, por eso queda detrás de la clave. Si falta `API_KEY`, `/documents` devuelve 503 en vez de quedar abierto. Costo: los contadores viven en la memoria de un proceso (se reinician al redeployar y no se comparten entre réplicas) y la IP solo es confiable si `TRUSTED_PROXY_HOPS` coincide con los proxies reales. |
 
 ## Evaluación
 
@@ -123,8 +126,10 @@ ANTHROPIC_API_KEY=...
 VOYAGE_API_KEY=...
 API_KEY=...
 # DATABASE_URL=postgresql://rag:rag@localhost:5433/rag   (por defecto, el Postgres del docker-compose.yml)
-# QUESTION_RATE_PER_MIN=20   consultas por minuto y por clave
+# QUESTION_RATE_PER_MIN=10   consultas por minuto y por IP
+# GLOBAL_RATE_PER_MIN=120    consultas por minuto en total, de todas las IP
 # DOCUMENT_RATE_PER_MIN=5    subidas por minuto y por clave
+# TRUSTED_PROXY_HOPS=0       proxies de confianza delante de la app (ver abajo)
 # MAX_UPLOAD_MB=10           tamaño máximo de un archivo
 # DB_POOL_MAX=10             conexiones máximas a Postgres
 # LOG_LEVEL=INFO             nivel de logging
@@ -133,7 +138,7 @@ API_KEY=...
 Levantá la base. La primera vez que se crea el volumen, `db/schema.sql` se aplica solo:
 
 ```bash
-docker compose up -d
+docker compose up -d db
 ```
 
 ```bash
@@ -141,7 +146,7 @@ python3 -m scripts.reindex    # indexa los documentos de samples/
 uvicorn app.main:app --reload
 ```
 
-Subir un documento y preguntar:
+Abrí http://127.0.0.1:8000/ para chatear. Por API, subir un documento (con clave) y preguntar (sin clave):
 
 ```bash
 curl -X POST http://127.0.0.1:8000/documents \
@@ -149,10 +154,11 @@ curl -X POST http://127.0.0.1:8000/documents \
   -F "file=@samples/banfield.txt;type=text/plain"
 
 curl -X POST http://127.0.0.1:8000/question \
-  -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"question": "¿Quién fundó el club?", "n_results": 4}'
 ```
+
+`TRUSTED_PROXY_HOPS` es la cantidad de proxies de confianza entre el navegador y la app (por ejemplo, 1 detrás del balanceador de una plataforma). Con 0 se usa la IP de la conexión y se ignora `X-Forwarded-For`, que cualquiera puede falsificar; con N se toma la entrada que agregó el proxy N-ésimo desde la derecha. Si lo ponés mal, todos los visitantes comparten un solo límite o cada uno puede esquivarlo.
 
 Estado de la app y de la base (no pide clave; responde 503 si la base no contesta):
 
@@ -187,13 +193,17 @@ Si el volumen de Postgres ya existía, `schema.sql` no se vuelve a aplicar solo.
 docker compose exec -T db psql -U rag -d rag < db/schema.sql
 ```
 
-Para correr la API en un contenedor (con la base del compose levantada; `host.docker.internal` funciona en Docker Desktop):
+Para correr **todo en contenedores** (la base y la app, con la interfaz en http://127.0.0.1:8000/):
 
 ```bash
-docker build -t rag-api .
-docker run --rm -p 8000:8000 --env-file .env \
-  -e DATABASE_URL=postgresql://rag:rag@host.docker.internal:5433/rag rag-api
+docker compose up -d --build
 ```
+
+```bash
+docker compose exec api python -m scripts.reindex
+```
+
+La app del compose se conecta a la base por su nombre de servicio (`db`) y lee el resto de las variables de tu `.env`. Si el puerto 8000 está ocupado, por ejemplo por un `uvicorn` local, cambiá el de la máquina con `API_PORT=8001 docker compose up -d --build`. No corras la app local y la del compose a la vez sobre el mismo puerto. Para volver a trabajar solo con la base, `docker compose up -d db`.
 
 ## Estructura
 
@@ -201,7 +211,8 @@ docker run --rm -p 8000:8000 --env-file .env \
 app/
   main.py                endpoints FastAPI
   schema.py              modelos Pydantic de entrada y salida
-  security.py            clave de API y límite de pedidos
+  security.py            clave de API, límite por IP y límite global
+  static/                la interfaz web: index.html, styles.css, app.js, favicon.svg y fuentes
   service/
     ingest.py            parseo, chunking, ingesta
     query.py             router, generación, citas
@@ -223,7 +234,9 @@ samples/                 documentos de ejemplo
 ## Limitaciones conocidas
 
 - Corpus chico y de un solo tema; los resultados son orientativos.
-- **Una sola clave compartida (`API_KEY`), sin usuarios ni permisos:** quien la tenga puede consultar y también reemplazar cualquier documento subiendo otro con el mismo nombre. El límite de pedidos está en memoria de un proceso, y el tope de subida lo comprueba la app pero el archivo ya llegó al servidor; conviene que el proxy de la plataforma también lo imponga.
+- **`/question` es público:** cualquiera puede gastar cuota de Claude y Voyage hasta el tope global (`GLOBAL_RATE_PER_MIN`). Los límites viven en la memoria de un proceso y la IP depende de `TRUSTED_PROXY_HOPS`.
+- **Una sola clave compartida (`API_KEY`) para subir documentos, sin usuarios ni permisos:** quien la tenga puede reemplazar cualquier documento subiendo otro con el mismo nombre. El tope de subida lo comprueba la app, pero el archivo ya llegó al servidor; conviene que el proxy de la plataforma también lo imponga.
+- **El chat no tiene memoria:** cada pregunta se responde sola, y la interfaz lo avisa.
 - **Credenciales de desarrollo** (`rag` / `rag`) en `docker-compose.yml`: no sirven para un deploy.
 - El reranker agrega una llamada a Voyage por consulta; si falla, se degrada a búsqueda híbrida. Su latencia y costo no están medidos.
 - El schema se aplica solo al crear la base (`initdb.d`) y no hay migraciones.
@@ -235,4 +248,4 @@ samples/                 documentos de ejemplo
 
 ## Datos
 
-Los textos de `samples/` provienen de Wikipedia en español (artículo sobre el Club Atlético Banfield), bajo licencia CC BY-SA 4.0.
+Los textos de `samples/` provienen de Wikipedia en español (artículo sobre el Club Atlético Banfield), bajo licencia CC BY-SA 4.0; la interfaz lo indica con un enlace. Las tipografías Barlow y Barlow Condensed (en `app/static/fonts/`) son de The Barlow Project Authors, bajo licencia SIL OFL 1.1 (el texto está en `app/static/fonts/OFL.txt`). Taladro no es un producto oficial del club y no usa su escudo.
