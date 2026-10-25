@@ -62,8 +62,8 @@ Design rationale worth knowing before changing retrieval (details in readme.md "
 
 `evals/dataset.json`: 36 questions over the Banfield corpus in `samples/`; 25 answerable (with a literal `must_contain` phrase that must appear in a retrieved chunk, compared accent- and case-insensitively) and 11 with `must_contain: null` (should be refused). With only 25 positives, one question = 0.04 recall, so small differences are noise.
 
-Current numbers on Postgres: `run_eval` gives semantic 0.88/0.73, hybrid 0.75 0.92/0.79 and rerank 1.00/1.00 (recall@4 / MRR); `e2e_evals` gives 11/11 negatives refused and 0/25 positives wrongly refused. The 1.00 is likely generous: up to 40 candidates over 38 chunks means the reranker sees almost the whole corpus.
+Current numbers on Postgres: `run_eval` gives semantic 0.88/0.73, hybrid 0.75 0.92/0.79 and rerank 1.00/1.00 (recall@4 / MRR); `e2e_evals` gives 11/11 negatives refused and 0/25 positives wrongly refused. The 1.00 is likely generous: up to 40 candidates over 38 chunks means the reranker sees almost the whole corpus. The `run_eval` numbers were re-measured after the pool, the custom exceptions and the UI (unchanged); `e2e_evals` was last run before those changes.
 
 ## Status
 
-The Chroma → Postgres migration lives on branch `feat/pgvector-migration` and is not merged. `main` still has the Chroma + in-memory BM25 version (commit `ee88a27`), useful as a baseline. The local `chromadb/` directory is a leftover and no code reads it. Not done yet: a paraphrased validation set for the evals, measuring reranker latency/cost, and choosing a hosting platform and managed Postgres.
+The Chroma → Postgres migration and the web UI are merged into `main` (PRs #1 and #2). The Chroma + in-memory BM25 version stays in history at commit `ee88a27` as a baseline. The local `chromadb/` directory is a leftover and no code reads it. Not done yet: deployment (managed Postgres on Neon, the app on Render, `TRUSTED_PROXY_HOPS` set to the platform's proxy hops), a paraphrased validation set for the evals, measuring reranker latency/cost, and testing the UI on real iOS and Android devices.
