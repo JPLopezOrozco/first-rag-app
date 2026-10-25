@@ -1,6 +1,6 @@
 import unicodedata
 import json
-from repository.repository import search, hybrid_search, rerank_search
+from app.repository.repository import search, hybrid_search, rerank_search
 
 
 def norm(s: str) -> str:
@@ -51,4 +51,3 @@ if __name__ == "__main__":
 
     for x in runs:
         print(f"{x['label']:<20} recall {x['recall']:.2f}  MRR {x['mrr']:.2f}")
-

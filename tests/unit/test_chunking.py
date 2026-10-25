@@ -1,9 +1,10 @@
-from service.ingest import chunking_overlap, _enc
+from app.exceptions.exceptions import InvalidChunkingParameters
+from app.service.ingest import chunking_overlap, _enc
 from pytest import raises
 
 def test_overlap_overflow():
     text = ' '.join(str(i) for i in range(3000))
-    with raises(ValueError):
+    with raises(InvalidChunkingParameters):
          chunking_overlap(text, chunk_size=500, overlap=500)
 
 def test_overlap():
@@ -17,4 +18,3 @@ def test_overlap():
     
     assert result[0].endswith(zone)
     assert result[1].startswith(zone)
-

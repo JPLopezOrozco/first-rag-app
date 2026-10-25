@@ -15,3 +15,6 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+
+CLAUDE.local.md
+

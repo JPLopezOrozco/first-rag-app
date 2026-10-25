@@ -1,10 +1,12 @@
 import io
+import logging
 from pypdf import PdfReader
 from docx import Document
-from repository.repository import add_chunks
+from app.repository.repository import add_chunks
 import tiktoken
-from exceptions.exceptions import EmptyDocumentError, UnsupportedFileType
+from app.exceptions.exceptions import EmptyDocumentError, InvalidChunkingParameters, UnsupportedFileType
 
+logger = logging.getLogger(__name__)
 
 _enc = tiktoken.get_encoding("cl100k_base")
 
@@ -29,14 +31,13 @@ def read_document(data:bytes, content_type:str)->str:
         content = data.decode("utf-8", errors="replace")
     elif ext ==".docx":
         content = "\n".join(p.text for p in Document(io.BytesIO(data)).paragraphs)
-    
     return content
 
 
 def chunking_overlap(text: str, chunk_size: int=500, overlap: int=100)->list[str]:
     
     if overlap >= chunk_size:
-        raise ValueError("Overlap debe ser menor a chunk size")
+        raise InvalidChunkingParameters("Overlap debe ser menor a chunk size")
     
     tokens = _enc.encode(text)
     step = chunk_size - overlap
@@ -58,7 +59,8 @@ def process_document(data:bytes, filename: str,content_type:str)->int:
     metadata = [{"source": filename, "chunk":i } for i in range(len(chunks))]
     ids = [f"{filename}_chunk_{i}" for i in range(len(chunks))]
     
-    add_chunks(filename, chunks, metadata, ids)
+    add_chunks(filename, chunks, metadata, ids, content_type)
+    logger.info("Documento indexado: %r (%d fragmentos)", filename, len(chunks))
     
     return len(chunks)
 

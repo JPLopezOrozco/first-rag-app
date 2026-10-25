@@ -1,11 +1,14 @@
+import logging
 import re
-from repository.repository import hybrid_search, rerank_search
-from schema import QueryResponse, QueryRequest, Source
+from app.exceptions.exceptions import RerankError
+from app.repository.repository import hybrid_search, rerank_search
+from app.schema import QueryResponse, QueryRequest, Source
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
 load_dotenv()
 client = Anthropic()
+logger = logging.getLogger(__name__)
 
 ALPHA = 0.75
 
@@ -43,8 +46,8 @@ def need_retrieval(query:str)->bool:
 def default_retrieve(query:str, n: int):
     try:
         return rerank_search(query, n)
-    except Exception:
-        print("RERANK FALLO, CAMBIO A HYBRID")
+    except RerankError:
+        logger.warning("Falló el reranker, se usa la búsqueda híbrida", exc_info=True)
         return hybrid_search(query, n, ALPHA)
         
         

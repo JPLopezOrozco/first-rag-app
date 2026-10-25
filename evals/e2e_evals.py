@@ -1,6 +1,6 @@
 import json
-from service.query import answer, NOT_FOUND
-from schema import QueryRequest
+from app.service.query import answer, NOT_FOUND
+from app.schema import QueryRequest
 
 data = json.load(open("evals/dataset.json", encoding="utf-8"))
 neg_ok = pos_rechazadas = 0
