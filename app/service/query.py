@@ -77,7 +77,7 @@ def answer(query:QueryRequest, retrieve=default_retrieve)->QueryResponse:
         return QueryResponse(answer=NOT_FOUND, sources=[])
     
     source = [
-        Source(source=m["source"], chunk=m["chunk"], text=t)
+        Source(ref=i, source=m["source"], chunk=m["chunk"], text=t)
             for i, (t,m)in enumerate(hits, 1) if i in cited
     ]
     
