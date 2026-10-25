@@ -2,6 +2,13 @@
 
 Sistema de preguntas y respuestas sobre documentos (PDF, DOCX, TXT) con **citas a las fuentes**. Pipeline completo escrito a mano: ingesta, chunking, embeddings, búsqueda híbrida, reranking, generación y evaluación.
 
+**En línea:** https://taladro.onrender.com/ (plan gratuito: si nadie la usó en los últimos 15 minutos, la primera visita tarda cerca de un minuto en despertar).
+
+## Autoría
+
+- **El RAG lo hice yo:** el pipeline completo (ingesta, chunking, búsqueda híbrida, reranking, generación con citas, validación y evaluaciones) está escrito a mano y sin frameworks, y las decisiones de diseño y las mediciones son mías.
+- **El despliegue y la interfaz web los hice asistido por IA** (Claude, de Anthropic): la interfaz de `app/static/`, el despliegue en Render y Neon, y parte de la documentación. Revisé y probé lo que se publicó.
+
 ## Qué hace
 
 **Taladro** es un chat web no oficial sobre el Club Atlético Banfield, servido por la propia app en `/`.
@@ -42,7 +49,7 @@ flowchart LR
 
 ## Stack
 
-Python 3.12 · FastAPI · Pydantic · Postgres 17 + pgvector · psycopg 3 · Voyage AI (embeddings y reranker) · Anthropic API (Claude Haiku 4.5) · tiktoken · pypdf · python-docx · pytest · Docker (para la base en desarrollo)
+Python 3.12 · FastAPI · Pydantic · Postgres 17 + pgvector · psycopg 3 · Voyage AI (embeddings y reranker) · Anthropic API (Claude Haiku 4.5) · tiktoken · pypdf · python-docx · pytest · Docker · Render (la app) · Neon (Postgres en producción)
 
 > Las dependencias `langchain-*` de `requirements.txt` las trae el SDK de Voyage; el código de este repo no usa LangChain ni LlamaIndex.
 
@@ -205,6 +212,32 @@ docker compose exec api python -m scripts.reindex
 
 La app del compose se conecta a la base por su nombre de servicio (`db`) y lee el resto de las variables de tu `.env`. Si el puerto 8000 está ocupado, por ejemplo por un `uvicorn` local, cambiá el de la máquina con `API_PORT=8001 docker compose up -d --build`. No corras la app local y la del compose a la vez sobre el mismo puerto. Para volver a trabajar solo con la base, `docker compose up -d db`.
 
+## Despliegue
+
+La app corre en **Render** (servicio web a partir del `Dockerfile`) y la base en **Neon** (Postgres con pgvector), las dos en la región de Virginia para que cada consulta no cruce regiones. Render no tiene región en São Paulo, y la región de un servicio no se puede cambiar después. Los dos usan planes gratuitos.
+
+**Pasos, en este orden:**
+
+1. En Neon, crear el proyecto (Postgres 17) y copiar la cadena de conexión **directa** (sin `-pooler`, con `?sslmode=require`).
+2. Aplicar el schema a mano, porque en Neon no hay `initdb.d`: `psql "$NEON_URL" -f db/schema.sql` (es idempotente).
+3. Indexar los documentos apuntando a Neon: `DATABASE_URL="$NEON_URL" python3 -m scripts.reindex`. Como `python-dotenv` no pisa una variable que ya existe en el entorno, el `.env` local no se toca.
+4. En Render, crear un Web Service desde el repo (lenguaje Docker, rama `main`, región Virginia, plan Free) con el health check en `/health`. El `CMD` del `Dockerfile` ya respeta la variable `PORT` de Render.
+5. Cargar en Render, en **Environment**, las variables `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, `DATABASE_URL`, `API_KEY` y `TRUSTED_PROXY_HOPS`. Las claves viven solo ahí: `.env` está en `.gitignore` y en `.dockerignore`, así que no llegan al repo ni a la imagen.
+
+**Verificación después de desplegar:** `GET /health` responde `{"status":"ok","database":"ok"}`, `/` sirve la interfaz, `POST /documents` sin clave da 401, una pregunta del tema vuelve con cita y una ajena al tema se rechaza.
+
+**Subir un documento al servicio desplegado** (con la clave; subir un archivo con el mismo nombre lo reemplaza):
+
+```bash
+curl -i -X POST https://taladro.onrender.com/documents \
+  -H "X-API-Key: $API_KEY" \
+  -F "file=@samples/banfield.txt;type=text/plain"
+```
+
+**Gasto:** `/question` es público, así que el gasto se acota por fuera de la app: un tope mensual en la cuenta de Anthropic (con la recarga automática desactivada) y Voyage en su plan gratuito, sin tarjeta cargada. Los límites de la app (10 por minuto por IP, 120 en total) son una segunda barrera.
+
+**Pendiente de medir:** `TRUSTED_PROXY_HOPS` está en `0`, el valor por defecto, porque todavía no medí cuántas entradas agrega la plataforma a `X-Forwarded-For`. Con `0` se ignora ese encabezado y todos los visitantes comparten el límite por IP.
+
 ## Estructura
 
 ```
@@ -233,8 +266,8 @@ samples/                 documentos de ejemplo
 
 ## Estado
 
-- **Hecho:** pipeline completo con reranker, migración a Postgres + pgvector, seguridad (clave, límites y tope de subida), pool de conexiones, `/health`, excepciones propias, imagen de Docker con `docker compose` e interfaz web.
-- **Pendiente:** el despliegue (la base en Neon y la app en Render), un set de validación con preguntas parafraseadas, medir la latencia y el costo del reranker, y probar la interfaz en dispositivos reales (iOS y Android).
+- **Hecho:** pipeline completo con reranker, migración a Postgres + pgvector, seguridad (clave, límites y tope de subida), pool de conexiones, `/health`, excepciones propias, imagen de Docker con `docker compose` e interfaz web, y el despliegue en Render (app) y Neon (base).
+- **Pendiente:** fijar `TRUSTED_PROXY_HOPS` midiendo los proxies reales de Render, un set de validación con preguntas parafraseadas, medir la latencia y el costo del reranker, y probar la interfaz en dispositivos reales (iOS y Android).
 - La versión anterior, con Chroma y BM25 en memoria, está en el commit `ee88a27` como punto de comparación.
 
 ## Limitaciones conocidas
@@ -244,6 +277,8 @@ samples/                 documentos de ejemplo
 - **Una sola clave compartida (`API_KEY`) para subir documentos, sin usuarios ni permisos:** quien la tenga puede reemplazar cualquier documento subiendo otro con el mismo nombre. El tope de subida lo comprueba la app, pero el archivo ya llegó al servidor; conviene que el proxy de la plataforma también lo imponga.
 - **El chat no tiene memoria:** cada pregunta se responde sola ("¿y el estadio?" no funciona) y la interfaz lo avisa.
 - **Credenciales de desarrollo** (`rag` / `rag`) en `docker-compose.yml`: no sirven para un deploy.
+- **Planes gratuitos en producción:** Render duerme el servicio tras 15 minutos sin tráfico y tarda cerca de un minuto en despertarlo; Neon suspende el cómputo a los 5 minutos sin uso, así que la primera consulta después de una pausa es lenta. Además, con `TRUSTED_PROXY_HOPS` en `0` los visitantes comparten el límite por IP.
+- **No hay interfaz para subir documentos:** `/documents` se usa por API, con la clave.
 - El reranker agrega una llamada a Voyage por consulta; si falla, se degrada a búsqueda híbrida. Su latencia y costo no están medidos.
 - El schema se aplica solo al crear la base (`initdb.d`) y no hay migraciones.
 - `ts_rank_cd` no es BM25 (sin IDF ni normalización por largo): la rama de palabras rankea peor, y se compensa con el reranker.
