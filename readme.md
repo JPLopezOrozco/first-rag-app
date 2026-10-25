@@ -4,10 +4,14 @@ Sistema de preguntas y respuestas sobre documentos (PDF, DOCX, TXT) con **citas 
 
 **En línea:** https://taladro.onrender.com/ (plan gratuito: si nadie la usó en los últimos 15 minutos, la primera visita tarda cerca de un minuto en despertar).
 
+[![Taladro contestando con la fuente a la vista (video de 20 segundos)](docs/taladro-demo.jpg)](docs/taladro-demo.mp4)
+
+*Video de 20 segundos con la app real en uso: pregunta, respuesta con cita, fuente y rechazo de lo que no está en los documentos.*
+
 ## Autoría
 
 - **El RAG lo hice yo:** el pipeline completo (ingesta, chunking, búsqueda híbrida, reranking, generación con citas, validación y evaluaciones) está escrito a mano y sin frameworks, y las decisiones de diseño y las mediciones son mías.
-- **El despliegue y la interfaz web los hice asistido por IA** (Claude, de Anthropic): la interfaz de `app/static/`, el despliegue en Render y Neon, y parte de la documentación. Revisé y probé lo que se publicó.
+- **El despliegue y la interfaz web los hice asistido por IA** (Claude, de Anthropic): la interfaz de `app/static/`, el despliegue en Render y Neon, el video, el diagrama de arquitectura y parte de la documentación. Revisé y probé lo que se publicó.
 
 ## Qué hace
 
@@ -19,6 +23,16 @@ Sistema de preguntas y respuestas sobre documentos (PDF, DOCX, TXT) con **citas 
 4. Si la respuesta no está en los documentos, responde que no la encuentra en vez de inventar.
 
 ## Arquitectura
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/arquitectura-dark.png">
+  <img src="docs/arquitectura-light.png" alt="Arquitectura de Taladro: los hinchas llegan a la interfaz web y a la API FastAPI en Render; la consulta pasa por Claude Haiku, el repositorio usa Voyage AI y Postgres con pgvector en Neon; la ingesta entra por POST /documents con clave.">
+</picture>
+
+*Diagrama generado con [Archify](https://github.com/tt-a1i/archify) a partir del código (commit `5d4a2d3`): cada componente cita los archivos y líneas que lo respaldan.*
+
+<details>
+<summary>Flujo detallado de ingesta y consulta (Mermaid)</summary>
 
 ```mermaid
 flowchart LR
@@ -44,6 +58,8 @@ flowchart LR
   end
   E -.-> H
 ```
+
+</details>
 
 **Capas:** `app/static/` (la interfaz web: HTML, CSS y JavaScript sin framework ni paso de build) → `app/main.py` (HTTP) → `app/service/` (lógica: ingesta y consulta) → `app/repository/` (acceso a Postgres, embeddings y reranker). Los servicios no conocen HTTP; el router traduce las excepciones de dominio a códigos de estado.
 
