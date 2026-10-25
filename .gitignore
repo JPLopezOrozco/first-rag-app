@@ -1,10 +1,18 @@
 # entorno
 venv/
 .venv/
-.env
 
-# datos locales
-chromadb/
+# secretos (claves de API, credenciales de Neon/Render, certificados)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets/
+
+# notas personales (no forman parte del proyecto)
+notas/
 
 # python
 __pycache__/
@@ -17,6 +25,8 @@ __pycache__/
 .vscode/
 
 CLAUDE.local.md
+.claude/settings.local.json
+.claude/skills/
 .taste-skill/
 
 # videos generados (brag)
